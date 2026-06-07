@@ -241,10 +241,16 @@
     </div>
     <button id="planToday" class="pillbtn plan-today">Jump to today</button>
     <div id="planReadings" class="plan-readings"></div>
-    <button id="planSpeedDay" class="primarybtn plan-speed-day">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h6l-1 8 9-12h-6z" fill="currentColor" stroke="none"/></svg>
-      Speed-read this day
-    </button>
+    <div class="plan-day-actions">
+      <button id="planSpeedDay" class="primarybtn plan-day-btn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h6l-1 8 9-12h-6z" fill="currentColor" stroke="none"/></svg>
+        Speed-read day
+      </button>
+      <button id="planListenDay" class="primarybtn plan-day-btn alt">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H3v6h3l5 4zM16 9a4 4 0 0 1 0 6M19 7a8 8 0 0 1 0 10"/></svg>
+        Listen to day
+      </button>
+    </div>
     <div class="plan-progress">
       <div class="plan-progress-track"><div id="planBar" class="plan-progress-fill"></div></div>
       <span id="planProgressLabel" class="muted small">0 of 365 days complete</span>
