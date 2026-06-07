@@ -1,5 +1,5 @@
 /* Service worker — precaches the app shell + full Bible text for offline use. */
-var CACHE = "bible-offline-v1.5.1";
+var CACHE = "bible-offline-v1.6.0";
 
 var PRECACHE = [
   "./",
