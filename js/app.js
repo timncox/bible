@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.8.0";
+  var APP_VERSION = "1.9.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -573,16 +573,20 @@
   // Study — cross-references (Treasury of Scripture Knowledge, openbible.info)
   // and Matthew Henry's Concise Commentary. Both loaded lazily and cached.
   // ======================================================================
-  var TSK_URL = "data/tsk.json", MHC_URL = "data/mhc.json", EASTON_URL = "data/easton.json";
-  var tskData = null, mhcData = null, eastonData = null;
-  var studyVerse = null, studyTab = "xref", dictQuery = "";
+  var TSK_URL = "data/tsk.json", MHC_URL = "data/mhc.json", EASTON_URL = "data/easton.json", LEX_URL = "data/lexicon.json";
+  var tskData = null, mhcData = null, eastonData = null, lexData = null, lexKeys = null;
+  var studyVerse = null, studyTab = "xref", dictQuery = "", lexQuery = "";
 
+  function studyLoaded() { return tskData && mhcData && eastonData && lexData; }
   function loadStudyData(cb) {
-    if (tskData && mhcData && eastonData) { cb(); return; }
+    if (studyLoaded()) { cb(); return; }
     els.studyContent.innerHTML = '<p class="study-loading">Loading study tools…</p>';
     var get = function (have, url) { return have ? Promise.resolve(have) : fetch(url).then(function (r) { return r.json(); }); };
-    Promise.all([get(tskData, TSK_URL), get(mhcData, MHC_URL), get(eastonData, EASTON_URL)])
-      .then(function (res) { tskData = res[0]; mhcData = res[1]; eastonData = res[2]; cb(); })
+    Promise.all([get(tskData, TSK_URL), get(mhcData, MHC_URL), get(eastonData, EASTON_URL), get(lexData, LEX_URL)])
+      .then(function (res) {
+        tskData = res[0]; mhcData = res[1]; eastonData = res[2]; lexData = res[3];
+        lexKeys = Object.keys(lexData); cb();
+      })
       .catch(function () {
         els.studyContent.innerHTML = '<p class="study-empty">Couldn’t load study data. Connect to the internet once so it can be saved for offline use.</p>';
       });
@@ -590,9 +594,110 @@
 
   function stripTags(t) { return (t || "").replace(/<[^>]+>/g, ""); }
 
+  // ---- Tappable scripture references --------------------------------------
+  // Map of abbreviations -> book index. Includes English (for Easton) and the
+  // unambiguous Portuguese/Latin forms the commentary uses; anything ambiguous
+  // (e.g. "Jo", "Co") or apocryphal is deliberately left out so it stays plain
+  // text rather than linking to the wrong place.
+  var REF_ABBR = (function () {
+    var m = {};
+    function add(i, list) { list.forEach(function (a) { m[a] = i; }); }
+    add(0, ["gen","ge","gn","genesis"]);            add(1, ["ex","exo","exod","exodus"]);
+    add(2, ["lev","lv","leviticus"]);               add(3, ["num","nm","numbers"]);
+    add(4, ["deut","dt","deuteronomy"]);            add(5, ["josh","jos","js","joshua"]);
+    add(6, ["judg","jdg","jz","judges"]);           add(7, ["ruth","rt"]);
+    add(8, ["1sam","1sa","1sm","1samuel"]);         add(9, ["2sam","2sa","2sm","2samuel"]);
+    add(10,["1kings","1kgs","1ki","1rs"]);          add(11,["2kings","2kgs","2ki","2rs"]);
+    add(12,["1chr","1ch","1cr","1chronicles"]);     add(13,["2chr","2ch","2cr","2chronicles"]);
+    add(14,["ezra","ezr","ed"]);                    add(15,["neh","ne","nehemiah"]);
+    add(16,["esth","est","esther"]);                add(17,["job"]);
+    add(18,["ps","psa","psalm","psalms","sl"]);     add(19,["prov","prv","pv","proverbs"]);
+    add(20,["eccl","eccles","ecclesiastes"]);       add(21,["song","sos","cant","ct","canticles"]);
+    add(22,["isa","isaiah"]);                       add(23,["jer","jr","jeremiah"]);
+    add(24,["lam","lamentations"]);                 add(25,["ezek","ezk","ez","ezekiel"]);
+    add(26,["dan","dn","daniel"]);                  add(27,["hos","hosea"]);
+    add(28,["joel","jl"]);                          add(29,["amos"]);
+    add(30,["obad","obadiah"]);                     add(31,["jonah","jnh"]);
+    add(32,["mic","mq","micah"]);                   add(33,["nah","nahum"]);
+    add(34,["hab","habakkuk"]);                     add(35,["zeph","sf","zephaniah"]);
+    add(36,["hag","haggai"]);                       add(37,["zech","zc","zechariah"]);
+    add(38,["mal","ml","malachi"]);                 add(39,["matt","mt","matthew"]);
+    add(40,["mark","mk","mc","mrk"]);               add(41,["luke","lk","lc","luk"]);
+    add(42,["john","jhn","joh"]);                   add(43,["acts","at","act"]);
+    add(44,["rom","rm","romans"]);                  add(45,["1cor","1co","1corinthians"]);
+    add(46,["2cor","2co","2corinthians"]);          add(47,["gal","gl","galatians"]);
+    add(48,["eph","ef","ephesians"]);               add(49,["phil","php","fp","philippians"]);
+    add(50,["col","cl","colossians"]);              add(51,["1thess","1th","1ts"]);
+    add(52,["2thess","2th","2ts"]);                 add(53,["1tim","1ti","1tm"]);
+    add(54,["2tim","2ti","2tm"]);                   add(55,["titus","tit","tt"]);
+    add(56,["philem","phlm","phm","philemon"]);     add(57,["heb","hb","hebrews"]);
+    add(58,["jas","jam","tg","james"]);             add(59,["1pet","1pe","1pt"]);
+    add(60,["2pet","2pe","2pt"]);                   add(61,["1john","1jn","1jo"]);
+    add(62,["2john","2jn","2jo"]);                  add(63,["3john","3jn","3jo"]);
+    add(64,["jude"]);                               add(65,["rev","rv","ap","apoc","revelation"]);
+    return m;
+  })();
+  function refBook(s) { var k = s.toLowerCase().replace(/\./g, "").replace(/\s+/g, ""); return (k in REF_ABBR) ? REF_ABBR[k] : -1; }
+
+  function refSpan(bi, chap, verse, label) {
+    if (bi < 0 || !BIBLE[bi] || chap < 1 || chap > BIBLE[bi].chapters.length) return null;
+    var v = (verse >= 1 && verse <= BIBLE[bi].chapters[chap - 1].length) ? verse : 1;
+    return '<span class="ref" data-b="' + bi + '" data-c="' + (chap - 1) + '" data-v="' + v + '">' + esc(label) + '</span>';
+  }
+
+  // Linkify references in a clean reference string (Easton reflink contents),
+  // carrying the last book/chapter across "; 3:22" style continuations.
+  function linkRefString(content, st) {
+    var parts = content.split(/([;,])/);
+    return parts.map(function (p) {
+      if (p === ";" || p === ",") return esc(p);
+      var s = p.trim();
+      if (!s) return esc(p);
+      var lead = p.slice(0, p.indexOf(s)), tail = p.slice(p.indexOf(s) + s.length);
+      var m, bi, c, v, label;
+      if ((m = s.match(/^((?:[1-3]\s*)?[A-Za-z][A-Za-z.]*)\s+(\d+):(\d+)/))) {
+        bi = refBook(m[1]); c = +m[2]; v = +m[3]; label = m[0];
+      } else if ((m = s.match(/^(\d+):(\d+)/))) {
+        bi = st.b; c = +m[1]; v = +m[2]; label = m[0];
+      } else if ((m = s.match(/^(\d+)/)) && st.b >= 0 && st.c > 0) {
+        bi = st.b; c = st.c; v = +m[1]; label = m[0];
+      } else if ((m = s.match(/^((?:[1-3]\s*)?[A-Za-z][A-Za-z.]*)\s+(\d+)\b/))) {
+        bi = refBook(m[1]); c = +m[2]; v = 1; label = m[0];
+      } else return esc(p);
+      var span = refSpan(bi, c, v, label);
+      if (!span) return esc(p);
+      st.b = bi; st.c = c;
+      return esc(lead) + span + esc(s.slice(label.length)) + esc(tail);
+    }).join("");
+  }
+  function linkifyEaston(text) {
+    var st = { b: -1, c: 0 }, out = "", last = 0, m, re = /<reflink>([\s\S]*?)<\/reflink>/g;
+    while ((m = re.exec(text))) {
+      out += esc(text.slice(last, m.index)) + linkRefString(m[1], st);
+      last = re.lastIndex;
+    }
+    return out + esc(text.slice(last));
+  }
+
+  // Linkify references inside prose (commentary): "Book c:v" (known abbrevs only)
+  // and "ver. N" (relative to the passage's chapter). Unknown -> left as text.
+  function linkifyProse(text, ctxB, ctxC) {
+    var out = "", last = 0, m;
+    var re = /\b((?:[1-3]\s*)?[A-Za-z]{2,12})\.?\s+(\d+):(\d+)|\bver(?:se)?\.?\s+(\d+)/g;
+    while ((m = re.exec(text))) {
+      out += esc(text.slice(last, m.index));
+      var span = null;
+      if (m[1] !== undefined) span = refSpan(refBook(m[1]), +m[2], +m[3], m[0]);
+      else span = refSpan(ctxB, ctxC + 1, +m[4], m[0]);
+      out += span || esc(m[0]);
+      last = re.lastIndex;
+    }
+    return out + esc(text.slice(last));
+  }
+
   function openStudy(s) {
     studyVerse = { b: s.b, c: s.c, v: s.v };
-    dictQuery = "";
+    dictQuery = ""; lexQuery = "";
     setStudyTab("xref");
     els.studyRef.textContent = verseRef(studyVerse);
     clearVerseSelection();
@@ -604,7 +709,7 @@
   // the commentary tab. studyVerse.v = 0 signals "chapter-level".
   function openStudyChapter(b, c) {
     studyVerse = { b: b, c: c, v: 0 };
-    dictQuery = "";
+    dictQuery = ""; lexQuery = "";
     setStudyTab("comm");
     els.studyRef.textContent = BIBLE[b].name + " " + (c + 1);
     clearVerseSelection();
@@ -622,7 +727,8 @@
   function renderStudy() {
     if (studyTab === "xref") renderXrefs();
     else if (studyTab === "comm") renderCommentary();
-    else renderDictionary();
+    else if (studyTab === "dict") renderDictionary();
+    else renderLexicon();
   }
 
   function renderXrefs() {
@@ -666,7 +772,7 @@
       html += '<div class="comm-passage">' +
         '<div class="comm-range">' + BIBLE[studyVerse.b].name + " " + (studyVerse.c + 1) + ":" + (s === e ? s : s + "–" + e) +
         (isCur ? " · this verse" : "") + '</div>' +
-        '<div class="comm-text' + (isCur ? " current" : "") + '">' + esc(stripTags(text)) + '</div></div>';
+        '<div class="comm-text' + (isCur ? " current" : "") + '">' + linkifyProse(stripTags(text), studyVerse.b, studyVerse.c) + '</div></div>';
     });
     els.studyContent.innerHTML = html;
     // scroll the passage containing the tapped verse into view
@@ -703,7 +809,7 @@
     if (!list.length) return '<p class="study-empty">No dictionary entries found.</p>';
     return list.map(function (e) {
       return '<div class="dict-entry"><div class="dict-word">' + esc(e.w) +
-        '</div><div class="dict-def">' + esc(stripTags(e.d)) + '</div></div>';
+        '</div><div class="dict-def">' + linkifyEaston(e.d) + '</div></div>';
     }).join("");
   }
   function updateDictResults() {
@@ -724,19 +830,66 @@
       'placeholder="Look up a word…" value="' + esc(dictQuery) + '"><div id="dictResults"></div>';
     updateDictResults();
   }
+  // ---- Strong's lexicon ----
+  function lexEntryHtml(num, e) {
+    var head = '<span class="lex-num">' + esc(num) + '</span> <span class="lex-lemma">' + esc(e.l) + '</span>';
+    if (e.x) head += ' <span class="lex-xlit">' + esc(e.x) + '</span>';
+    if (e.p) head += ' <span class="lex-pron">/' + esc(e.p) + '/</span>';
+    var body = '<div class="lex-def">' + esc(e.d) + '</div>';
+    if (e.k) body += '<div class="lex-kjv"><b>KJV:</b> ' + esc(e.k) + '</div>';
+    return '<div class="lex-entry"><div class="lex-head">' + head + '</div>' + body + '</div>';
+  }
+  function searchLexicon(q) {
+    q = q.trim();
+    if (!q) return "";
+    var numMatch = q.match(/^([hg]?)(\d+)$/i);
+    if (numMatch) {
+      var keys = numMatch[1] ? [numMatch[1].toUpperCase() + numMatch[2]] : ["G" + numMatch[2], "H" + numMatch[2]];
+      var out = "";
+      keys.forEach(function (k) { if (lexData[k]) out += lexEntryHtml(k, lexData[k]); });
+      return out || '<p class="study-empty">No entry for ' + esc(q) + '.</p>';
+    }
+    var n = q.toLowerCase(), pre = [], mid = [];
+    for (var i = 0; i < lexKeys.length && pre.length + mid.length < 40; i++) {
+      var k = lexKeys[i], e = lexData[k];
+      var x = (e.x || "").toLowerCase(), l = (e.l || "").toLowerCase();
+      if (x.indexOf(n) === 0 || l.indexOf(n) === 0) pre.push([k, e]);
+      else if ((e.k || "").toLowerCase().indexOf(n) !== -1 || (e.d || "").toLowerCase().indexOf(n) !== -1) mid.push([k, e]);
+    }
+    var list = pre.concat(mid).slice(0, 30);
+    if (!list.length) return '<p class="study-empty">No entries match “' + esc(q) + '”.</p>';
+    return list.map(function (p) { return lexEntryHtml(p[0], p[1]); }).join("");
+  }
+  function updateLexResults() {
+    var box = els.studyContent.querySelector("#lexResults");
+    if (!box) return;
+    box.innerHTML = (lexQuery && lexQuery.length >= 2)
+      ? searchLexicon(lexQuery)
+      : '<p class="dict-hint">Search by Strong’s number (e.g. G26, H430) or an English word (e.g. love, grace).</p>';
+  }
+  function renderLexicon() {
+    els.studyCredit.textContent = "Strong’s Hebrew & Greek Dictionary (public domain)";
+    els.studyContent.innerHTML =
+      '<input id="lexSearch" class="dict-search" type="search" autocomplete="off" ' +
+      'placeholder="Strong’s number or word…" value="' + esc(lexQuery) + '"><div id="lexResults"></div>';
+    updateLexResults();
+  }
+
   els.studyContent.addEventListener("input", function (e) {
-    if (e.target && e.target.id === "dictSearch") { dictQuery = e.target.value; updateDictResults(); }
+    if (!e.target) return;
+    if (e.target.id === "dictSearch") { dictQuery = e.target.value; updateDictResults(); }
+    else if (e.target.id === "lexSearch") { lexQuery = e.target.value; updateLexResults(); }
   });
 
   els.studyPanel.querySelectorAll("[data-studytab]").forEach(function (b) {
     b.addEventListener("click", function () {
       setStudyTab(b.getAttribute("data-studytab"));
-      if (tskData && mhcData && eastonData) renderStudy();
+      if (studyLoaded()) renderStudy();
       else loadStudyData(renderStudy);
     });
   });
   els.studyContent.addEventListener("click", function (e) {
-    var x = e.target.closest(".xref");
+    var x = e.target.closest(".xref, .ref");
     if (!x) return;
     closePanels();
     goChapter(+x.getAttribute("data-b"), +x.getAttribute("data-c"));
