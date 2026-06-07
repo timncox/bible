@@ -25,6 +25,11 @@ network required after the first visit.
 - **Read** in a clean, distraction‑free view with paragraph or verse‑by‑verse layout.
 - **Navigate** by book → chapter, with prev/next buttons, swipe gestures, and arrow keys.
 - **Search** the entire Bible instantly, with highlighted matches.
+- **M'Cheyne reading plan** — the classic Robert Murray M'Cheyne one‑year plan
+  (the whole Bible once, the New Testament & Psalms twice). Opens to today's
+  reading, shows the 2 "Family" + 2 "Secret" passages, tap a passage to jump
+  there, check off readings, and track your yearly progress. Works offline and
+  your progress is saved on‑device.
 - **Bookmarks** — tap any verse to bookmark, copy, or share it. Saved on‑device.
 - **Themes** — light, sepia, and dark, plus adjustable text size.
 - All preferences, bookmarks, and your last reading position are stored locally
