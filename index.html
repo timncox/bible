@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Holy Bible — Offline</title>
+  <meta name="description" content="Read the complete Holy Bible offline on your phone. Installable Progressive Web App." />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#4338ca" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)" />
+
+  <!-- iOS add-to-home-screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Bible" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- App bar -->
+  <header class="appbar" role="banner">
+    <button id="btnBooks" class="iconbtn" aria-label="Choose book">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </button>
+    <button id="btnRef" class="ref-title" aria-label="Current passage — tap to choose chapter">
+      <span id="refText">Genesis 1</span>
+      <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div class="appbar-actions">
+      <button id="btnSearch" class="iconbtn" aria-label="Search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      </button>
+      <button id="btnMenu" class="iconbtn" aria-label="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M16.9 16.9l2.1 2.1M19.1 4.9l-2.1 2.1M7 16.9l-2.1 2.1"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Reading area -->
+  <main id="reader" class="reader" tabindex="-1">
+    <div id="loading" class="loading">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Loading Scripture…</p>
+    </div>
+    <article id="chapter" class="chapter" hidden></article>
+  </main>
+
+  <!-- Bottom navigation -->
+  <nav class="bottomnav" aria-label="Chapter navigation">
+    <button id="btnPrev" class="navbtn" aria-label="Previous chapter">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      <span>Prev</span>
+    </button>
+    <button id="btnPickChapter" class="navbtn center" aria-label="Pick chapter">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 9v11"/></svg>
+      <span id="navRef">Genesis 1</span>
+    </button>
+    <button id="btnNext" class="navbtn" aria-label="Next chapter">
+      <span>Next</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </nav>
+
+  <!-- Verse action toast -->
+  <div id="verseActions" class="verse-actions" hidden role="dialog" aria-label="Verse actions">
+    <span id="verseActionsRef" class="va-ref"></span>
+    <div class="va-buttons">
+      <button data-act="bookmark" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span id="vaBookmarkLabel">Bookmark</span></button>
+      <button data-act="copy" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Copy</span></button>
+      <button data-act="share" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg><span>Share</span></button>
+      <button data-act="close" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span>Close</span></button>
+    </div>
+  </div>
+
+  <!-- ===== Overlays ===== -->
+
+  <!-- Books drawer -->
+  <div id="booksPanel" class="panel left" hidden aria-label="Books">
+    <div class="panel-head">
+      <h2>Books</h2>
+      <button class="iconbtn close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="seg" role="tablist">
+      <button class="seg-btn active" data-testament="ot" role="tab">Old Testament</button>
+      <button class="seg-btn" data-testament="nt" role="tab">New Testament</button>
+    </div>
+    <ul id="bookList" class="booklist"></ul>
+  </div>
+
+  <!-- Chapter picker -->
+  <div id="chapterPanel" class="panel bottom" hidden aria-label="Chapters">
+    <div class="panel-head">
+      <h2 id="chapterPanelTitle">Chapters</h2>
+      <button class="iconbtn close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div id="chapterGrid" class="chaptergrid"></div>
+  </div>
+
+  <!-- Search -->
+  <div id="searchPanel" class="panel full" hidden aria-label="Search">
+    <div class="panel-head search-head">
+      <button class="iconbtn close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <input id="searchInput" type="search" placeholder="Search the Bible…" autocomplete="off" enterkeyhint="search" />
+      <button id="searchClear" class="iconbtn" aria-label="Clear"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <p id="searchMeta" class="search-meta"></p>
+    <div id="searchResults" class="search-results"></div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settingsPanel" class="panel right" hidden aria-label="Settings">
+    <div class="panel-head">
+      <h2>Settings</h2>
+      <button class="iconbtn close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="settings-body">
+      <section class="setting">
+        <label>Theme</label>
+        <div class="seg theme-seg">
+          <button class="seg-btn" data-theme-set="light">Light</button>
+          <button class="seg-btn" data-theme-set="sepia">Sepia</button>
+          <button class="seg-btn" data-theme-set="dark">Dark</button>
+        </div>
+      </section>
+
+      <section class="setting">
+        <label>Text size</label>
+        <div class="size-row">
+          <button id="fontMinus" class="pillbtn">A−</button>
+          <span id="fontVal" class="font-val">100%</span>
+          <button id="fontPlus" class="pillbtn">A+</button>
+        </div>
+      </section>
+
+      <section class="setting">
+        <label>Verse layout</label>
+        <div class="seg">
+          <button class="seg-btn" data-layout="paragraph">Paragraph</button>
+          <button class="seg-btn" data-layout="verse">Each verse</button>
+        </div>
+      </section>
+
+      <section class="setting">
+        <div class="setting-head-row">
+          <label>Bookmarks</label>
+          <span id="bookmarkCount" class="muted"></span>
+        </div>
+        <ul id="bookmarkList" class="bookmark-list"></ul>
+      </section>
+
+      <section class="setting">
+        <button id="btnInstall" class="primarybtn" hidden>Install app on device</button>
+        <p id="installHint" class="muted small"></p>
+      </section>
+
+      <section class="setting about">
+        <p class="muted small">
+          Translation: <strong>World English Bible (WEB)</strong> — public domain.
+          All 66 books are stored on your device for offline reading.
+        </p>
+        <p class="muted small" id="storageInfo"></p>
+        <p class="muted small">Version <span id="appVersion">—</span></p>
+      </section>
+    </div>
+  </div>
+
+  <div id="scrim" class="scrim" hidden></div>
+
+  <!-- Offline / update toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/app.js" defer></script>
+</body>
+</html>
