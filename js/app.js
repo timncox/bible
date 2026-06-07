@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.1.0";
+  var APP_VERSION = "1.2.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -24,7 +24,7 @@
   }
 
   var settings = Object.assign(
-    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1 },
+    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null },
     load(LS.settings, {})
   );
   var pos = load(LS.pos, { b: 0, c: 0 });
@@ -43,7 +43,9 @@
    "settingsPanel","fontMinus","fontPlus","fontVal","bookmarkList","bookmarkCount",
    "btnInstall","installHint","storageInfo","appVersion","scrim","toast",
    "btnSpeed","speedReader","speedClose","speedRef","speedWpm","speedWord","speedHint",
-   "speedBar","speedPlay","speedPlayIcon","speedSlower","speedFaster","speedBack","speedFwd","speedChunkSeg"
+   "speedBar","speedPlay","speedPlayIcon","speedSlower","speedFaster","speedBack","speedFwd","speedChunkSeg",
+   "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
+   "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -122,6 +124,7 @@
   // Navigation
   // ======================================================================
   function goChapter(b, c) {
+    if (typeof stopListen === "function") stopListen(); // end audio on manual nav
     pos = { b: b, c: c };
     renderChapter(true);
   }
@@ -557,6 +560,204 @@
   }
 
   // ======================================================================
+  // Listen mode — offline text-to-speech via the Web Speech API
+  // ======================================================================
+  // Uses the device's built-in voices (no audio files, works offline when a
+  // local voice is selected). Reads verse-by-verse in short utterances so it
+  // stays reliable on mobile (avoids the long-utterance cutoff bug) and lets
+  // us highlight the verse being spoken. Pause/resume is implemented as
+  // cancel + restart-at-current-chunk, which behaves consistently everywhere.
+  var TTS = ("speechSynthesis" in window) && ("SpeechSynthesisUtterance" in window);
+  var au = {
+    on: false, paused: false,
+    b: 0, c: 0,
+    chunks: [], ci: 0, lastV: -1,
+    voices: [], voice: null
+  };
+
+  function loadVoices(cb) {
+    var v = speechSynthesis.getVoices();
+    if (v && v.length) { cb(v); return; }
+    var handler = function () {
+      speechSynthesis.removeEventListener("voiceschanged", handler);
+      cb(speechSynthesis.getVoices());
+    };
+    speechSynthesis.addEventListener("voiceschanged", handler);
+  }
+
+  function pickDefaultVoice() {
+    var vs = au.voices;
+    if (!vs.length) return null;
+    var byName = vs.filter(function (v) { return v.name === settings.voiceName; })[0];
+    if (byName) return byName;
+    var localEn = vs.filter(function (v) { return v.localService && /^en/i.test(v.lang); })[0];
+    if (localEn) return localEn;
+    var anyEn = vs.filter(function (v) { return /^en/i.test(v.lang); })[0];
+    return anyEn || vs[0];
+  }
+
+  // Build short speakable chunks (one per sentence) for a chapter, tagged with
+  // the verse they belong to so we can highlight as we go.
+  function buildAudioChunks(b, c) {
+    var verses = BIBLE[b].chapters[c];
+    var out = [];
+    for (var v = 0; v < verses.length; v++) {
+      // Split into sentences without regex lookbehind (older Safari safe).
+      var parts = verses[v].match(/[^.!?]+[.!?]*["”’)]*\s*/g) || [verses[v]];
+      for (var p = 0; p < parts.length; p++) {
+        var t = parts[p].trim();
+        if (t) out.push({ v: v, text: t });
+      }
+    }
+    return out;
+  }
+
+  function audioVoiceLabel() {
+    if (!au.voice) return "Device voice";
+    return au.voice.name + (au.voice.localService ? " · Offline" : " · Online");
+  }
+
+  function startListen(fromVerse) {
+    if (!TTS) { toast("This device has no text-to-speech voices."); return; }
+    speechSynthesis.cancel();
+    au.b = pos.b; au.c = pos.c;
+    au.chunks = buildAudioChunks(au.b, au.c);
+    au.ci = 0; au.lastV = -1;
+    var startV = (typeof fromVerse === "number") ? fromVerse
+      : (selectedVerse && selectedVerse.b === au.b && selectedVerse.c === au.c ? selectedVerse.v - 1 : 0);
+    for (var k = 0; k < au.chunks.length; k++) { if (au.chunks[k].v === startV) { au.ci = k; break; } }
+    au.on = true; au.paused = false;
+    els.audioBar.hidden = false;
+    setAudioPlayIcon(true);
+    updateAudioLabels();
+    speakChunk();
+  }
+
+  function speakChunk() {
+    if (!au.on || au.paused) return;
+    var ch = au.chunks[au.ci];
+    if (!ch) { advanceChapter(); return; }
+    if (ch.v !== au.lastV) { highlightVerse(ch.v); au.lastV = ch.v; }
+    els.audioRef.textContent = BIBLE[au.b].name + " " + (au.c + 1) + ":" + (ch.v + 1);
+    var u = new SpeechSynthesisUtterance(ch.text);
+    if (au.voice) u.voice = au.voice;
+    u.rate = settings.rate;
+    u.onend = function () {
+      if (!au.on || au.paused) return;
+      au.ci++;
+      if (au.ci >= au.chunks.length) advanceChapter();
+      else speakChunk();
+    };
+    u.onerror = function () { /* swallow interruptions from cancel() */ };
+    speechSynthesis.speak(u);
+  }
+
+  function advanceChapter() {
+    if (au.c < BIBLE[au.b].chapters.length - 1) { au.c++; }
+    else if (au.b < BIBLE.length - 1) { au.b++; au.c = 0; }
+    else { stopListen(); toast("Finished the Bible."); return; }
+    pos = { b: au.b, c: au.c };
+    renderChapter(false);
+    au.chunks = buildAudioChunks(au.b, au.c);
+    au.ci = 0; au.lastV = -1;
+    speakChunk();
+  }
+
+  function highlightVerse(vIdx) {
+    var prev = els.chapter.querySelector(".v.speaking");
+    if (prev) prev.classList.remove("speaking");
+    var node = els.chapter.querySelector('.v[data-v="' + (vIdx + 1) + '"]');
+    if (node) { node.classList.add("speaking"); node.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  }
+
+  function setAudioPlayIcon(playing) {
+    els.audioPlayIcon.setAttribute("d", playing ? "M7 5h4v14H7zM13 5h4v14h-4z" : "M8 5l11 7-11 7z");
+    els.audioPlay.setAttribute("aria-label", playing ? "Pause" : "Play");
+  }
+  function updateAudioLabels() {
+    els.audioVoice.textContent = audioVoiceLabel();
+    els.audioRate.textContent = settings.rate.toFixed(1) + "×";
+  }
+
+  function pauseListen() {
+    au.paused = true;
+    speechSynthesis.cancel();
+    setAudioPlayIcon(false);
+  }
+  function resumeListen() {
+    if (!au.on) return;
+    au.paused = false;
+    setAudioPlayIcon(true);
+    speakChunk();
+  }
+  function toggleListen() {
+    if (!au.on) { startListen(); return; }
+    au.paused ? resumeListen() : pauseListen();
+  }
+  function stopListen() {
+    au.on = false; au.paused = false;
+    if (TTS) speechSynthesis.cancel();
+    var prev = els.chapter.querySelector(".v.speaking");
+    if (prev) prev.classList.remove("speaking");
+    els.audioBar.hidden = true;
+  }
+  function audioNudge(delta) {
+    settings.rate = Math.min(2, Math.max(0.5, Math.round((settings.rate + delta) * 10) / 10));
+    save(LS.settings, settings);
+    updateAudioLabels();
+    if (au.on && !au.paused) { speechSynthesis.cancel(); speakChunk(); } // apply new rate now
+  }
+
+  function openVoicePanel() {
+    var html = "";
+    au.voices.forEach(function (v, i) {
+      var sel = (au.voice && v.name === au.voice.name) ? ' class="current"' : "";
+      var badge = v.localService ? '<span class="badge">Offline</span>' : '<span class="badge online">Online</span>';
+      html += '<li' + sel + ' data-vi="' + i + '"><span class="voice-row"><span class="voice-name">' +
+              esc(v.name) + ' <span class="voice-lang">' + esc(v.lang) + '</span></span>' + badge + '</span></li>';
+    });
+    els.voiceList.innerHTML = html || '<li class="bookmark-empty">No voices available on this device.</li>';
+    openPanel(els.voicePanel);
+  }
+  els.voiceList.addEventListener("click", function (e) {
+    var li = e.target.closest("li[data-vi]");
+    if (!li) return;
+    au.voice = au.voices[+li.getAttribute("data-vi")];
+    settings.voiceName = au.voice.name;
+    save(LS.settings, settings);
+    updateAudioLabels();
+    closePanels();
+    if (au.on && !au.paused) { speechSynthesis.cancel(); speakChunk(); }
+  });
+
+  if (TTS) {
+    loadVoices(function (vs) {
+      au.voices = vs.filter(function (v) { return /^en/i.test(v.lang); });
+      if (!au.voices.length) au.voices = vs;
+      au.voice = pickDefaultVoice();
+      updateAudioLabels();
+    });
+  } else {
+    els.btnListen.style.display = "none";
+  }
+
+  els.btnListen.addEventListener("click", function () {
+    if (!BIBLE) return;
+    if (sr.playing) pause();             // don't run RSVP + audio at once
+    if (au.on && au.b === pos.b && au.c === pos.c) { stopListen(); }
+    else { startListen(); }
+  });
+  els.audioPlay.addEventListener("click", toggleListen);
+  els.audioStop.addEventListener("click", stopListen);
+  els.audioSlower.addEventListener("click", function () { audioNudge(-0.1); });
+  els.audioFaster.addEventListener("click", function () { audioNudge(0.1); });
+  els.audioVoiceBtn.addEventListener("click", openVoicePanel);
+  // Keep the engine alive if the OS pauses it when backgrounded briefly.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && au.on && !au.paused && TTS && !speechSynthesis.speaking) speakChunk();
+  });
+
+  // ======================================================================
   // Speed reader — RSVP with ORP (Spritz-style), variable timing
   // ======================================================================
   // Why this design: single-word RSVP at a fixed focal point removes eye
@@ -595,6 +796,7 @@
   }
 
   function openSpeed() {
+    if (typeof stopListen === "function") stopListen(); // don't overlap audio + RSVP
     sr.b = pos.b; sr.c = pos.c;
     sr.tokens = buildTokens(sr.b, sr.c);
     // Start at the selected verse if the reader has one highlighted.

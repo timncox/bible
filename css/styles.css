@@ -290,6 +290,43 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   animation: panelIn 0.2s ease;
 }
 
+/* ===== Audio / Listen mode ===== */
+.chapter .v.speaking {
+  background: var(--selected);
+  border-radius: 6px;
+  box-shadow: 0 0 0 4px var(--selected);
+}
+.chapter .v.speaking .vn { color: var(--accent); }
+
+.audiobar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-elev);
+  border-top: 1px solid var(--line);
+}
+.audio-info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.audio-ref { font-weight: 650; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audio-voice { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audio-rate { color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 0.85rem; min-width: 32px; text-align: center; }
+.audio-btn {
+  display: inline-grid; place-items: center;
+  width: 40px; height: 40px; flex: 0 0 auto;
+  border: none; border-radius: 11px; background: transparent; color: var(--text);
+  font-size: 1.3rem; font-weight: 700; cursor: pointer;
+}
+.audio-btn:active { background: var(--bg-elev2); }
+.audio-btn.primary { background: var(--accent-strong); color: #fff; }
+.audio-btn.primary svg { width: 22px; height: 22px; }
+
+.voice-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.voice-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-lang { color: var(--muted); font-size: 0.8rem; }
+.badge {
+  font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 20px;
+  background: var(--selected); color: var(--accent); white-space: nowrap;
+}
+.badge.online { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+
 /* ===== Speed reader (RSVP + ORP) ===== */
 .speed {
   position: fixed; inset: 0; z-index: 55;
