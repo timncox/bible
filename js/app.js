@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.2.0";
+  var APP_VERSION = "1.3.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -13,7 +13,8 @@
   var LS = {
     pos: "bible.pos",
     settings: "bible.settings",
-    bookmarks: "bible.bookmarks"
+    bookmarks: "bible.bookmarks",
+    plan: "bible.plan"
   };
   function load(key, fallback) {
     try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -45,7 +46,9 @@
    "btnSpeed","speedReader","speedClose","speedRef","speedWpm","speedWord","speedHint",
    "speedBar","speedPlay","speedPlayIcon","speedSlower","speedFaster","speedBack","speedFwd","speedChunkSeg",
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
-   "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList"
+   "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList",
+   "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
+   "planReadings","planBar","planProgressLabel"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -558,6 +561,112 @@
     return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   }
+
+  // ======================================================================
+  // M'Cheyne reading plan — read the whole Bible in a year (NT + Psalms twice)
+  // ======================================================================
+  // Data: data/mcheyne.json — 365 days, each { d:"MMDD", f:[reading,reading],
+  // s:[reading,reading] } where a reading is { t:"Genesis 9-10", p:[[b,c],…] }.
+  // Loaded lazily (and cached by the service worker, so it works offline).
+  var PLAN_URL = "data/mcheyne.json";
+  var PLAN = null;
+  var planDayIdx = 0;
+  var planDone = load(LS.plan, {}); // { "MMDD": [fam0, fam1, sec0, sec1] }
+  var MONTHS = ["January","February","March","April","May","June","July",
+    "August","September","October","November","December"];
+
+  function todayKey() {
+    var d = new Date();
+    var mm = ("0" + (d.getMonth() + 1)).slice(-2);
+    var dd = ("0" + d.getDate()).slice(-2);
+    return mm + dd;
+  }
+  function keyToIndex(key) {
+    for (var i = 0; i < PLAN.length; i++) if (PLAN[i].d === key) return i;
+    if (key === "0229") return keyToIndex("0228"); // plan has no leap day
+    return 0;
+  }
+  function planDayName(key) {
+    return MONTHS[(+key.slice(0, 2)) - 1] + " " + (+key.slice(2));
+  }
+  function planCompleteCount() {
+    var n = 0;
+    for (var k in planDone) {
+      var a = planDone[k];
+      if (a && a[0] && a[1] && a[2] && a[3]) n++;
+    }
+    return n;
+  }
+  function refreshPlanLaunch() {
+    if (!els.planLaunchSub) return;
+    var n = planCompleteCount();
+    els.planLaunchSub.textContent = n ? (n + " / 365 days complete") : "Read the Bible in a year";
+  }
+  refreshPlanLaunch();
+
+  function loadPlan(cb) {
+    if (PLAN) { cb(); return; }
+    fetch(PLAN_URL).then(function (r) { return r.json(); })
+      .then(function (data) { PLAN = data; cb(); })
+      .catch(function () { toast("Couldn't load the reading plan."); });
+  }
+
+  function openPlan() {
+    closePanels();
+    loadPlan(function () {
+      planDayIdx = keyToIndex(todayKey());
+      renderPlan();
+      openPanel(els.planPanel);
+    });
+  }
+
+  function renderPlan() {
+    var day = PLAN[planDayIdx];
+    var done = planDone[day.d] || [false, false, false, false];
+    els.planDayLabel.textContent = planDayName(day.d);
+    els.planDayNum.textContent = "Day " + (planDayIdx + 1) + " of 365";
+
+    function group(title, readings, offset) {
+      var h = '<div class="plan-group"><h3>' + title + '</h3>';
+      for (var i = 0; i < readings.length; i++) {
+        var rd = readings[i], di = offset + i, isDone = !!done[di];
+        h += '<div class="plan-row">' +
+          '<button class="plan-check' + (isDone ? " done" : "") + '" data-di="' + di + '" aria-label="Mark as read">' +
+          '<svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></button>' +
+          '<button class="plan-ref' + (isDone ? " done" : "") + '" data-b="' + rd.p[0][0] + '" data-c="' + rd.p[0][1] + '">' +
+          esc(rd.t) + '</button></div>';
+      }
+      return h + "</div>";
+    }
+    els.planReadings.innerHTML = group("Family", day.f, 0) + group("Secret", day.s, 2);
+    updatePlanProgress();
+  }
+
+  function updatePlanProgress() {
+    var n = planCompleteCount();
+    els.planBar.style.width = (n / 365 * 100) + "%";
+    els.planProgressLabel.textContent = n + " of 365 days complete";
+    refreshPlanLaunch();
+  }
+
+  els.btnPlan.addEventListener("click", openPlan);
+  els.planPrev.addEventListener("click", function () { if (planDayIdx > 0) { planDayIdx--; renderPlan(); } });
+  els.planNext.addEventListener("click", function () { if (planDayIdx < PLAN.length - 1) { planDayIdx++; renderPlan(); } });
+  els.planToday.addEventListener("click", function () { planDayIdx = keyToIndex(todayKey()); renderPlan(); });
+  els.planReadings.addEventListener("click", function (e) {
+    var chk = e.target.closest(".plan-check");
+    if (chk) {
+      var di = +chk.getAttribute("data-di"), day = PLAN[planDayIdx];
+      var arr = planDone[day.d] || [false, false, false, false];
+      arr[di] = !arr[di];
+      planDone[day.d] = arr;
+      save(LS.plan, planDone);
+      renderPlan();
+      return;
+    }
+    var ref = e.target.closest(".plan-ref");
+    if (ref) { closePanels(); goChapter(+ref.getAttribute("data-b"), +ref.getAttribute("data-c")); }
+  });
 
   // ======================================================================
   // Listen mode — offline text-to-speech via the Web Speech API
