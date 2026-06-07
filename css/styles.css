@@ -290,6 +290,21 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   animation: panelIn 0.2s ease;
 }
 
+/* ===== Today's-reading floating button ===== */
+.fab {
+  position: fixed; right: 16px; bottom: calc(var(--safe-bottom) + 78px);
+  z-index: 18; width: 52px; height: 52px; border-radius: 50%;
+  border: none; background: var(--accent-strong); color: #fff;
+  box-shadow: var(--shadow); display: grid; place-items: center; cursor: pointer;
+}
+.fab:active { transform: scale(0.94); }
+.fab svg { width: 24px; height: 24px; }
+.fab-dot {
+  position: absolute; top: 7px; right: 7px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--bookmark); border: 2px solid var(--accent-strong);
+}
+
 /* ===== M'Cheyne reading plan ===== */
 .plan-launch {
   display: flex; align-items: center; gap: 12px;
