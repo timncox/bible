@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.9.0";
+  var APP_VERSION = "1.10.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -49,7 +49,7 @@
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
    "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
-   "planReadings","planBar","planProgressLabel","planSpeedDay","fabPlan","fabDot",
+   "planReadings","planBar","planProgressLabel","planSpeedDay","planListenDay","fabPlan","fabDot",
    "studyPanel","studyRef","studyContent","studyCredit"
   ].forEach(function (id) { els[id] = $(id); });
 
@@ -983,6 +983,8 @@
           esc(rd.t) + '</button>' +
           '<button class="plan-speed" data-trk="' + trk + '" data-ri="' + i + '" aria-label="Speed read ' + esc(rd.t) + '">' +
           '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" fill="currentColor" stroke="none"/></svg></button>' +
+          '<button class="plan-listen" data-trk="' + trk + '" data-ri="' + i + '" aria-label="Listen to ' + esc(rd.t) + '">' +
+          '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4zM16 9a4 4 0 0 1 0 6"/></svg></button>' +
           '</div>';
       }
       return h + "</div>";
@@ -1013,11 +1015,20 @@
   els.planSpeedDay.addEventListener("click", function () {
     if (PLAN) speedReadChapters(dayChapters(PLAN[planDayIdx]));
   });
+  els.planListenDay.addEventListener("click", function () {
+    if (PLAN) listenChapters(dayChapters(PLAN[planDayIdx]));
+  });
   els.planReadings.addEventListener("click", function (e) {
     var sp = e.target.closest(".plan-speed");
     if (sp) {
       var rd = PLAN[planDayIdx][sp.getAttribute("data-trk")][+sp.getAttribute("data-ri")];
       speedReadChapters(rd.p);
+      return;
+    }
+    var ln = e.target.closest(".plan-listen");
+    if (ln) {
+      var rdl = PLAN[planDayIdx][ln.getAttribute("data-trk")][+ln.getAttribute("data-ri")];
+      listenChapters(rdl.p);
       return;
     }
     var chk = e.target.closest(".plan-check");
@@ -1054,7 +1065,8 @@
     on: false, paused: false,
     b: 0, c: 0,
     chunks: [], ci: 0, lastV: -1,
-    voices: [], voice: null
+    voices: [], voice: null,
+    queue: null, qi: 0
   };
 
   function loadVoices(cb) {
@@ -1099,21 +1111,37 @@
     return au.voice.name + (au.voice.localService ? " · Offline" : " · Online");
   }
 
-  function startListen(fromVerse) {
+  // startListen() reads the current chapter onward; startListen(null, queue)
+  // reads a fixed [[b,c],…] playlist in order (used by the reading plan).
+  function startListen(fromVerse, queue) {
     if (!TTS) { toast("This device has no text-to-speech voices."); return; }
     speechSynthesis.cancel();
-    au.b = pos.b; au.c = pos.c;
+    if (queue && queue.length) {
+      au.queue = queue.slice(); au.qi = 0;
+      au.b = au.queue[0][0]; au.c = au.queue[0][1];
+      pos = { b: au.b, c: au.c }; renderChapter(false); // show the chapter being read
+    } else {
+      au.queue = null;
+      au.b = pos.b; au.c = pos.c;
+    }
     au.chunks = buildAudioChunks(au.b, au.c);
     au.ci = 0; au.lastV = -1;
-    var startV = (typeof fromVerse === "number") ? fromVerse
-      : (selectedVerse && selectedVerse.b === au.b && selectedVerse.c === au.c ? selectedVerse.v - 1 : 0);
-    for (var k = 0; k < au.chunks.length; k++) { if (au.chunks[k].v === startV) { au.ci = k; break; } }
+    if (!au.queue) {
+      var startV = (typeof fromVerse === "number") ? fromVerse
+        : (selectedVerse && selectedVerse.b === au.b && selectedVerse.c === au.c ? selectedVerse.v - 1 : 0);
+      for (var k = 0; k < au.chunks.length; k++) { if (au.chunks[k].v === startV) { au.ci = k; break; } }
+    }
     au.on = true; au.paused = false;
     els.audioBar.hidden = false;
     setAudioPlayIcon(true);
     updateAudioLabels();
     updateFab();
     speakChunk();
+  }
+  function listenChapters(chapters) {
+    if (!chapters || !chapters.length) return;
+    closePanels();
+    startListen(null, chapters);
   }
 
   function speakChunk() {
@@ -1136,7 +1164,11 @@
   }
 
   function advanceChapter() {
-    if (au.c < BIBLE[au.b].chapters.length - 1) { au.c++; }
+    if (au.queue) {
+      au.qi++;
+      if (au.qi >= au.queue.length) { stopListen(); toast("Finished today’s reading."); return; }
+      au.b = au.queue[au.qi][0]; au.c = au.queue[au.qi][1];
+    } else if (au.c < BIBLE[au.b].chapters.length - 1) { au.c++; }
     else if (au.b < BIBLE.length - 1) { au.b++; au.c = 0; }
     else { stopListen(); toast("Finished the Bible."); return; }
     pos = { b: au.b, c: au.c };
@@ -1178,7 +1210,7 @@
     au.paused ? resumeListen() : pauseListen();
   }
   function stopListen() {
-    au.on = false; au.paused = false;
+    au.on = false; au.paused = false; au.queue = null;
     if (TTS) speechSynthesis.cancel();
     var prev = els.chapter.querySelector(".v.speaking");
     if (prev) prev.classList.remove("speaking");
