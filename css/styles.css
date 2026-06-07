@@ -313,6 +313,25 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .comm-text.current { /* passage containing the tapped verse */ }
 .study-credit { padding: 0 16px calc(var(--safe-bottom) + 12px); margin: 0; }
 
+/* tappable scripture references inside commentary/dictionary */
+.ref { color: var(--accent); font-weight: 600; cursor: pointer; border-bottom: 1px dotted var(--accent); }
+.ref:active { background: var(--selected); border-radius: 4px; }
+
+/* study tabs scroll horizontally when crowded */
+.study-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+.study-tabs::-webkit-scrollbar { display: none; }
+.study-tabs .seg-btn { flex: 0 0 auto; white-space: nowrap; }
+
+/* Strong's lexicon entries */
+.lex-entry { padding: 10px 2px 12px; border-bottom: 1px solid var(--line); }
+.lex-head { margin-bottom: 5px; line-height: 1.5; }
+.lex-num { font-weight: 700; color: var(--accent); }
+.lex-lemma { font-size: 1.15rem; }
+.lex-xlit { color: var(--text); font-style: italic; }
+.lex-pron { color: var(--muted); font-size: 0.85rem; }
+.lex-def { color: var(--text-dim); line-height: 1.55; font-size: 0.95rem; }
+.lex-kjv { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+
 /* dictionary tab */
 .dict-search {
   width: 100%; box-sizing: border-box; margin: 4px 0 10px;
