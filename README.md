@@ -38,7 +38,9 @@ network required after the first visit.
   **Easton's Bible Dictionary** (auto‑suggests terms from the verse, plus full
   search), and **Strong's** Hebrew & Greek lexicon (search by number or word).
   Scripture references inside the commentary and dictionary are **tappable** to
-  jump straight to the cited verse. All bundled for offline use.
+  jump straight to the cited verse. A fifth **Interlinear** tab shows the KJV verse
+  with **Strong's numbers** — tap any word to open its Hebrew/Greek lexicon entry.
+  All bundled for offline use (the interlinear data downloads on first use).
 - **Bookmarks** — tap any verse to bookmark, copy, or share it. Saved on‑device.
 - **Themes** — light, sepia, and dark, plus adjustable text size.
 - All preferences, bookmarks, and your last reading position are stored locally
