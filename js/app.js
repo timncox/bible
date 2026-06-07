@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.12.1";
+  var APP_VERSION = "1.12.2";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -1156,10 +1156,11 @@
   // saved voice, and refresh the picker if it's open. Voices on iOS/Android can
   // arrive late and change, so this is called on boot AND on every voiceschanged.
   function refreshVoices() {
-    var vs = (speechSynthesis.getVoices() || []).slice();
+    var all = (speechSynthesis.getVoices() || []).slice();
+    // English voices only (fall back to everything if the device has none).
+    var vs = all.filter(function (v) { return /^en/i.test(v.lang); });
+    if (!vs.length) vs = all;
     vs.sort(function (a, b) {
-      var ae = /^en/i.test(a.lang), be = /^en/i.test(b.lang);
-      if (ae !== be) return ae ? -1 : 1;
       if (a.localService !== b.localService) return a.localService ? -1 : 1;
       return (a.name || "").localeCompare(b.name || "");
     });
@@ -1327,7 +1328,7 @@
     });
     els.voiceList.innerHTML = html || '<li class="bookmark-empty">No matching voices. Clear the filter, or download more (e.g. Enhanced) in your device settings.</li>';
     if (els.voiceNote) {
-      var note = au.voices.length + " voice" + (au.voices.length === 1 ? "" : "s") + " available to this app.";
+      var note = au.voices.length + " English voice" + (au.voices.length === 1 ? "" : "s") + " available to this app.";
       if (isIOS()) note += " Note: iOS reserves its newest Premium and Siri voices (e.g. Zoe) for native apps — those don’t appear in web apps. “Enhanced” voices usually do.";
       els.voiceNote.textContent = note;
     }
