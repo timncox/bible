@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.12.0";
+  var APP_VERSION = "1.12.1";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -47,7 +47,7 @@
    "speedBar","speedPlay","speedPlayIcon","speedSlower","speedFaster","speedBack","speedFwd","speedChunkSeg",
    "speedPrevCh","speedNextCh",
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
-   "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList","voiceFilter",
+   "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList","voiceFilter","voiceNote",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
    "planReadings","planBar","planProgressLabel","planSpeedDay","planListenDay","fabPlan","fabDot",
    "studyPanel","studyRef","studyContent","studyCredit"
@@ -1325,7 +1325,12 @@
       html += '<li class="' + cur.trim() + '" data-vi="' + i + '"><span class="voice-row"><span class="voice-name">' +
               esc(v.name) + ' <span class="voice-lang">' + esc(v.lang) + '</span></span>' + badge + '</span></li>';
     });
-    els.voiceList.innerHTML = html || '<li class="bookmark-empty">No matching voices. Download more (e.g. Premium/Enhanced) in your device settings — they’ll appear here.</li>';
+    els.voiceList.innerHTML = html || '<li class="bookmark-empty">No matching voices. Clear the filter, or download more (e.g. Enhanced) in your device settings.</li>';
+    if (els.voiceNote) {
+      var note = au.voices.length + " voice" + (au.voices.length === 1 ? "" : "s") + " available to this app.";
+      if (isIOS()) note += " Note: iOS reserves its newest Premium and Siri voices (e.g. Zoe) for native apps — those don’t appear in web apps. “Enhanced” voices usually do.";
+      els.voiceNote.textContent = note;
+    }
   }
   function openVoicePanel() {
     voiceFilter = "";
