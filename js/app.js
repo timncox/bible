@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.3.0";
+  var APP_VERSION = "1.4.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -48,7 +48,7 @@
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
    "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
-   "planReadings","planBar","planProgressLabel"
+   "planReadings","planBar","planProgressLabel","fabPlan","fabDot"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -597,10 +597,21 @@
     }
     return n;
   }
+  function todayDone() {
+    var a = planDone[todayKey()] || planDone["0229"];
+    return !!(a && a[0] && a[1] && a[2] && a[3]);
+  }
   function refreshPlanLaunch() {
-    if (!els.planLaunchSub) return;
-    var n = planCompleteCount();
-    els.planLaunchSub.textContent = n ? (n + " / 365 days complete") : "Read the Bible in a year";
+    if (els.planLaunchSub) {
+      var n = planCompleteCount();
+      els.planLaunchSub.textContent = n ? (n + " / 365 days complete") : "Read the Bible in a year";
+    }
+    updateFab();
+  }
+  function updateFab() {
+    // Hide the floating button while audio is playing (it shares that corner).
+    els.fabPlan.hidden = (typeof au !== "undefined" && au.on);
+    els.fabDot.hidden = todayDone();
   }
   refreshPlanLaunch();
 
@@ -650,6 +661,7 @@
   }
 
   els.btnPlan.addEventListener("click", openPlan);
+  els.fabPlan.addEventListener("click", openPlan);
   els.planPrev.addEventListener("click", function () { if (planDayIdx > 0) { planDayIdx--; renderPlan(); } });
   els.planNext.addEventListener("click", function () { if (planDayIdx < PLAN.length - 1) { planDayIdx++; renderPlan(); } });
   els.planToday.addEventListener("click", function () { planDayIdx = keyToIndex(todayKey()); renderPlan(); });
@@ -662,6 +674,13 @@
       planDone[day.d] = arr;
       save(LS.plan, planDone);
       renderPlan();
+      // Auto-advance to the next day once all four readings are checked.
+      if (arr[di] && arr[0] && arr[1] && arr[2] && arr[3] && planDayIdx < PLAN.length - 1) {
+        toast("Day complete — on to the next!");
+        setTimeout(function () {
+          if (planDayIdx < PLAN.length - 1) { planDayIdx++; renderPlan(); }
+        }, 650);
+      }
       return;
     }
     var ref = e.target.closest(".plan-ref");
@@ -739,6 +758,7 @@
     els.audioBar.hidden = false;
     setAudioPlayIcon(true);
     updateAudioLabels();
+    updateFab();
     speakChunk();
   }
 
@@ -809,6 +829,7 @@
     var prev = els.chapter.querySelector(".v.speaking");
     if (prev) prev.classList.remove("speaking");
     els.audioBar.hidden = true;
+    updateFab();
   }
   function audioNudge(delta) {
     settings.rate = Math.min(2, Math.max(0.5, Math.round((settings.rate + delta) * 10) / 10));
