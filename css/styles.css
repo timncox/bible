@@ -290,6 +290,29 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   animation: panelIn 0.2s ease;
 }
 
+/* ===== Study panel (cross-refs + commentary) ===== */
+.panel.bottom.study, #studyPanel { max-height: 82vh; }
+.study-tabs { padding-bottom: 6px; }
+.study-content { overflow-y: auto; padding: 4px 16px 6px; flex: 1; }
+.study-loading { text-align: center; color: var(--text-dim); padding: 30px 0; }
+.xref {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 11px 12px; border: none; border-bottom: 1px solid var(--line);
+  background: transparent; color: var(--text);
+}
+.xref:active { background: var(--bg-elev2); }
+.xref .xref-ref { color: var(--accent); font-weight: 700; font-size: 0.9rem; margin-bottom: 3px; }
+.xref .xref-text { color: var(--text-dim); line-height: 1.5; font-size: 0.95rem; }
+.study-empty { text-align: center; color: var(--muted); padding: 32px 16px; }
+.comm-passage { padding: 6px 0 14px; }
+.comm-range { color: var(--accent); font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; }
+.comm-text {
+  line-height: 1.7; font-size: calc(1.02rem * var(--font-scale));
+  white-space: pre-wrap;
+}
+.comm-text.current { /* passage containing the tapped verse */ }
+.study-credit { padding: 0 16px calc(var(--safe-bottom) + 12px); margin: 0; }
+
 /* ===== Today's-reading floating button ===== */
 .fab {
   position: fixed; right: 16px; bottom: calc(var(--safe-bottom) + 78px);

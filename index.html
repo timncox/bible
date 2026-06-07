@@ -104,6 +104,7 @@
   <div id="verseActions" class="verse-actions" hidden role="dialog" aria-label="Verse actions">
     <span id="verseActionsRef" class="va-ref"></span>
     <div class="va-buttons">
+      <button data-act="study" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h7v16H6a2 2 0 0 0-2 2zM20 3v16a2 2 0 0 0-2 2h-5V3z"/></svg><span>Study</span></button>
       <button data-act="bookmark" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span id="vaBookmarkLabel">Bookmark</span></button>
       <button data-act="copy" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Copy</span></button>
       <button data-act="share" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg><span>Share</span></button>
@@ -206,6 +207,20 @@
         <p class="muted small">Version <span id="appVersion">—</span></p>
       </section>
     </div>
+  </div>
+
+  <!-- Study panel: cross-references + commentary -->
+  <div id="studyPanel" class="panel bottom" hidden aria-label="Study">
+    <div class="panel-head">
+      <h2 id="studyRef">Study</h2>
+      <button class="iconbtn close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="seg study-tabs">
+      <button class="seg-btn active" data-studytab="xref">Cross-references</button>
+      <button class="seg-btn" data-studytab="comm">Commentary</button>
+    </div>
+    <div id="studyContent" class="study-content"></div>
+    <p id="studyCredit" class="study-credit muted small"></p>
   </div>
 
   <!-- M'Cheyne reading plan -->
