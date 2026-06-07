@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.6.0";
+  var APP_VERSION = "1.7.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -49,7 +49,8 @@
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
    "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
-   "planReadings","planBar","planProgressLabel","planSpeedDay","fabPlan","fabDot"
+   "planReadings","planBar","planProgressLabel","planSpeedDay","fabPlan","fabDot",
+   "studyPanel","studyRef","studyContent","studyCredit"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -282,7 +283,8 @@
     if (!btn || !selectedVerse) return;
     var act = btn.getAttribute("data-act");
     var s = selectedVerse;
-    if (act === "bookmark") { toggleBookmark(s); showVerseActions(); }
+    if (act === "study") { openStudy(s); }
+    else if (act === "bookmark") { toggleBookmark(s); showVerseActions(); }
     else if (act === "copy") { copyText(verseRef(s) + " — " + verseText(s) + " (WEB)"); }
     else if (act === "share") { shareVerse(s); }
     else if (act === "close") { clearVerseSelection(); }
@@ -562,6 +564,110 @@
     return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   }
+
+  // ======================================================================
+  // Study — cross-references (Treasury of Scripture Knowledge, openbible.info)
+  // and Matthew Henry's Concise Commentary. Both loaded lazily and cached.
+  // ======================================================================
+  var TSK_URL = "data/tsk.json", MHC_URL = "data/mhc.json";
+  var tskData = null, mhcData = null;
+  var studyVerse = null, studyTab = "xref";
+
+  function loadStudyData(cb) {
+    if (tskData && mhcData) { cb(); return; }
+    els.studyContent.innerHTML = '<p class="study-loading">Loading study tools…</p>';
+    Promise.all([
+      tskData ? Promise.resolve(tskData) : fetch(TSK_URL).then(function (r) { return r.json(); }),
+      mhcData ? Promise.resolve(mhcData) : fetch(MHC_URL).then(function (r) { return r.json(); })
+    ]).then(function (res) {
+      tskData = res[0]; mhcData = res[1]; cb();
+    }).catch(function () {
+      els.studyContent.innerHTML = '<p class="study-empty">Couldn’t load study data. Connect to the internet once so it can be saved for offline use.</p>';
+    });
+  }
+
+  function openStudy(s) {
+    studyVerse = { b: s.b, c: s.c, v: s.v };
+    studyTab = "xref";
+    setStudyTab("xref");
+    els.studyRef.textContent = verseRef(studyVerse);
+    clearVerseSelection();
+    openPanel(els.studyPanel);
+    loadStudyData(renderStudy);
+  }
+
+  function setStudyTab(tab) {
+    studyTab = tab;
+    els.studyPanel.querySelectorAll("[data-studytab]").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-studytab") === tab);
+    });
+  }
+
+  function renderStudy() {
+    if (studyTab === "xref") renderXrefs();
+    else renderCommentary();
+  }
+
+  function renderXrefs() {
+    var key = studyVerse.b + "." + studyVerse.c + "." + studyVerse.v;
+    var refs = (tskData && tskData[key]) || [];
+    els.studyCredit.textContent = "Cross-references: openbible.info (CC BY)";
+    if (!refs.length) {
+      els.studyContent.innerHTML = '<p class="study-empty">No cross-references for this verse.</p>';
+      return;
+    }
+    var html = "";
+    refs.forEach(function (t, i) {
+      var bi = t[0], c0 = t[1], v1 = t[2];
+      var label = BIBLE[bi].name + " " + (c0 + 1) + ":" + v1;
+      if (t.length >= 5) label += "–" + (t[3] + 1) + ":" + t[4];
+      var text = (BIBLE[bi].chapters[c0] && BIBLE[bi].chapters[c0][v1 - 1]) || "";
+      html += '<button class="xref" data-b="' + bi + '" data-c="' + c0 + '" data-v="' + v1 + '">' +
+        '<div class="xref-ref">' + esc(label) + '</div>' +
+        '<div class="xref-text">' + esc(text) + '</div></button>';
+    });
+    els.studyContent.innerHTML = html;
+  }
+
+  function renderCommentary() {
+    els.studyCredit.textContent = "Matthew Henry’s Concise Commentary (public domain)";
+    var bk = mhcData && mhcData[studyVerse.b];
+    var passages = bk && bk[String(studyVerse.c + 1)];
+    if (!passages || !passages.length) {
+      els.studyContent.innerHTML = '<p class="study-empty">No commentary for this chapter.</p>';
+      return;
+    }
+    var html = "";
+    passages.forEach(function (p) {
+      var s = p[0], e = p[1], text = p[2];
+      var range = (s === e) ? ("v" + s) : ("v" + s + "–" + e);
+      var isCur = studyVerse.v >= s && studyVerse.v <= e;
+      html += '<div class="comm-passage">' +
+        '<div class="comm-range">' + BIBLE[studyVerse.b].name + " " + (studyVerse.c + 1) + ":" + (s === e ? s : s + "–" + e) +
+        (isCur ? " · this verse" : "") + '</div>' +
+        '<div class="comm-text' + (isCur ? " current" : "") + '">' + esc(text) + '</div></div>';
+    });
+    els.studyContent.innerHTML = html;
+    // scroll the passage containing the tapped verse into view
+    var cur = els.studyContent.querySelector(".comm-text.current");
+    if (cur) cur.scrollIntoView({ block: "start" });
+  }
+
+  els.studyPanel.querySelectorAll("[data-studytab]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      setStudyTab(b.getAttribute("data-studytab"));
+      if (tskData && mhcData) renderStudy();
+      else loadStudyData(renderStudy);
+    });
+  });
+  els.studyContent.addEventListener("click", function (e) {
+    var x = e.target.closest(".xref");
+    if (!x) return;
+    closePanels();
+    goChapter(+x.getAttribute("data-b"), +x.getAttribute("data-c"));
+    var v = +x.getAttribute("data-v");
+    setTimeout(function () { flashVerse(v); }, 60);
+  });
 
   // ======================================================================
   // M'Cheyne reading plan — read the whole Bible in a year (NT + Psalms twice)

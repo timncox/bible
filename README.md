@@ -32,6 +32,10 @@ network required after the first visit.
   **speed‑read** a single reading or the whole day's readings (the RSVP reader
   plays through each passage's chapters in order). Works offline and your
   progress is saved on‑device.
+- **Study tools** — tap any verse and choose **Study** for **cross‑references**
+  (Treasury of Scripture Knowledge) and **Matthew Henry's Concise Commentary**.
+  Cross‑references are tappable to jump straight to the related verse. Both are
+  bundled for offline use.
 - **Bookmarks** — tap any verse to bookmark, copy, or share it. Saved on‑device.
 - **Themes** — light, sepia, and dark, plus adjustable text size.
 - All preferences, bookmarks, and your last reading position are stored locally
@@ -95,7 +99,11 @@ properly licensed translation if you obtain one.
 > Note: the WEB renders the divine name as **“Yahweh”** in the Old Testament
 > where many translations (incl. the NIV) use **“the LORD.”**
 
-## License
+## License & attribution
 
 - App code: MIT.
 - Scripture text: World English Bible — public domain.
+- Matthew Henry's Concise Commentary — public domain.
+- Cross-references: Treasury of Scripture Knowledge via
+  [openbible.info](https://www.openbible.info/labs/cross-references/), licensed
+  **CC BY** (attribution required).
