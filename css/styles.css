@@ -332,6 +332,14 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .lex-def { color: var(--text-dim); line-height: 1.55; font-size: 0.95rem; }
 .lex-kjv { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
 
+/* interlinear tab */
+.intr { line-height: 2.1; font-size: calc(1.05rem * var(--font-scale)); padding: 4px 0 8px; }
+.iw {
+  cursor: pointer; border-bottom: 2px solid var(--accent);
+  padding: 1px 1px; border-radius: 3px;
+}
+.iw:active { background: var(--selected); }
+
 /* dictionary tab */
 .dict-search {
   width: 100%; box-sizing: border-box; margin: 4px 0 10px;

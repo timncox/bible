@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.10.0";
+  var APP_VERSION = "1.11.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -728,7 +728,47 @@
     if (studyTab === "xref") renderXrefs();
     else if (studyTab === "comm") renderCommentary();
     else if (studyTab === "dict") renderDictionary();
-    else renderLexicon();
+    else if (studyTab === "lex") renderLexicon();
+    else renderInterlinear();
+  }
+
+  // ---- Interlinear (KJV with Strong's, lazy-loaded — it's large) ----
+  var KJV_URL = "data/kjvtagged.json", kjvTagged = null;
+  function loadInterlinear(cb) {
+    if (kjvTagged) { cb(); return; }
+    fetch(KJV_URL).then(function (r) { return r.json(); })
+      .then(function (d) { kjvTagged = d; cb(); })
+      .catch(function () {
+        els.studyContent.innerHTML = '<p class="study-empty">Couldn’t load the interlinear. Connect to the internet once so it can be saved for offline use.</p>';
+      });
+  }
+  function parseInterlinear(s) {
+    return s.split(" ").map(function (tok) {
+      var m = tok.match(/^(.*?)((?:\[[GH]\d+\])+)$/);
+      if (m && m[1]) {
+        var first = m[2].match(/\[([GH]\d+)\]/);
+        return '<span class="iw" data-s="' + first[1] + '">' + esc(m[1]) + '</span>';
+      }
+      return esc(tok.replace(/\[[GH]\d+\]/g, ""));
+    }).join(" ");
+  }
+  function renderInterlinear() {
+    els.studyCredit.textContent = "KJV with Strong’s numbers (public domain)";
+    if (studyVerse.v === 0) {
+      els.studyContent.innerHTML = '<p class="study-empty">Tap a verse to see its Strong’s interlinear.</p>';
+      return;
+    }
+    if (!kjvTagged) {
+      els.studyContent.innerHTML = '<p class="study-loading">Loading interlinear…</p>';
+      loadInterlinear(function () { if (studyTab === "intr") renderInterlinear(); });
+      return;
+    }
+    var bk = kjvTagged[studyVerse.b];
+    var verse = bk && bk[studyVerse.c] && bk[studyVerse.c][studyVerse.v - 1];
+    if (!verse) { els.studyContent.innerHTML = '<p class="study-empty">No interlinear for this verse.</p>'; return; }
+    els.studyContent.innerHTML =
+      '<p class="dict-hint">King James Version — tap a highlighted word for its Strong’s entry.</p>' +
+      '<div class="intr">' + parseInterlinear(verse) + '</div>';
   }
 
   function renderXrefs() {
@@ -889,6 +929,13 @@
     });
   });
   els.studyContent.addEventListener("click", function (e) {
+    var iw = e.target.closest(".iw");
+    if (iw) {                              // interlinear word -> its Strong's entry
+      lexQuery = iw.getAttribute("data-s");
+      setStudyTab("lex");
+      if (lexData) renderLexicon(); else loadStudyData(renderStudy);
+      return;
+    }
     var x = e.target.closest(".xref, .ref");
     if (!x) return;
     closePanels();
