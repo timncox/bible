@@ -28,8 +28,10 @@ network required after the first visit.
 - **M'Cheyne reading plan** — the classic Robert Murray M'Cheyne one‑year plan
   (the whole Bible once, the New Testament & Psalms twice). Opens to today's
   reading, shows the 2 "Family" + 2 "Secret" passages, tap a passage to jump
-  there, check off readings, and track your yearly progress. Works offline and
-  your progress is saved on‑device.
+  there, check off readings, and track your yearly progress. You can also
+  **speed‑read** a single reading or the whole day's readings (the RSVP reader
+  plays through each passage's chapters in order). Works offline and your
+  progress is saved on‑device.
 - **Bookmarks** — tap any verse to bookmark, copy, or share it. Saved on‑device.
 - **Themes** — light, sepia, and dark, plus adjustable text size.
 - All preferences, bookmarks, and your last reading position are stored locally

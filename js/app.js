@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.4.0";
+  var APP_VERSION = "1.5.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -48,7 +48,7 @@
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
    "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
-   "planReadings","planBar","planProgressLabel","fabPlan","fabDot"
+   "planReadings","planBar","planProgressLabel","planSpeedDay","fabPlan","fabDot"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -637,7 +637,7 @@
     els.planDayLabel.textContent = planDayName(day.d);
     els.planDayNum.textContent = "Day " + (planDayIdx + 1) + " of 365";
 
-    function group(title, readings, offset) {
+    function group(title, readings, offset, trk) {
       var h = '<div class="plan-group"><h3>' + title + '</h3>';
       for (var i = 0; i < readings.length; i++) {
         var rd = readings[i], di = offset + i, isDone = !!done[di];
@@ -645,11 +645,14 @@
           '<button class="plan-check' + (isDone ? " done" : "") + '" data-di="' + di + '" aria-label="Mark as read">' +
           '<svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></button>' +
           '<button class="plan-ref' + (isDone ? " done" : "") + '" data-b="' + rd.p[0][0] + '" data-c="' + rd.p[0][1] + '">' +
-          esc(rd.t) + '</button></div>';
+          esc(rd.t) + '</button>' +
+          '<button class="plan-speed" data-trk="' + trk + '" data-ri="' + i + '" aria-label="Speed read ' + esc(rd.t) + '">' +
+          '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" fill="currentColor" stroke="none"/></svg></button>' +
+          '</div>';
       }
       return h + "</div>";
     }
-    els.planReadings.innerHTML = group("Family", day.f, 0) + group("Secret", day.s, 2);
+    els.planReadings.innerHTML = group("Family", day.f, 0, "f") + group("Secret", day.s, 2, "s");
     updatePlanProgress();
   }
 
@@ -665,7 +668,23 @@
   els.planPrev.addEventListener("click", function () { if (planDayIdx > 0) { planDayIdx--; renderPlan(); } });
   els.planNext.addEventListener("click", function () { if (planDayIdx < PLAN.length - 1) { planDayIdx++; renderPlan(); } });
   els.planToday.addEventListener("click", function () { planDayIdx = keyToIndex(todayKey()); renderPlan(); });
+  function dayChapters(day) {
+    var chapters = [];
+    day.f.concat(day.s).forEach(function (rd) {
+      rd.p.forEach(function (p) { chapters.push(p); });
+    });
+    return chapters;
+  }
+  els.planSpeedDay.addEventListener("click", function () {
+    if (PLAN) speedReadChapters(dayChapters(PLAN[planDayIdx]));
+  });
   els.planReadings.addEventListener("click", function (e) {
+    var sp = e.target.closest(".plan-speed");
+    if (sp) {
+      var rd = PLAN[planDayIdx][sp.getAttribute("data-trk")][+sp.getAttribute("data-ri")];
+      speedReadChapters(rd.p);
+      return;
+    }
     var chk = e.target.closest(".plan-check");
     if (chk) {
       var di = +chk.getAttribute("data-di"), day = PLAN[planDayIdx];
@@ -900,7 +919,9 @@
     i: 0,
     playing: false,
     timer: null,
-    b: 0, c: 0       // chapter being read
+    b: 0, c: 0,      // chapter being read
+    queue: null,     // optional [[b,c],…] playlist (e.g. a plan reading)
+    qi: 0
   };
 
   // Spritz-style Optimal Recognition Point by word length.
@@ -925,17 +946,29 @@
     return out;
   }
 
-  function openSpeed() {
+  // openSpeed() reads the current chapter onward; openSpeed(queue) reads a fixed
+  // playlist of [b,c] chapters in order (used by the reading plan).
+  function openSpeed(queue) {
     if (typeof stopListen === "function") stopListen(); // don't overlap audio + RSVP
-    sr.b = pos.b; sr.c = pos.c;
+    if (queue && queue.length) {
+      sr.queue = queue.slice();
+      sr.qi = 0;
+      sr.b = sr.queue[0][0]; sr.c = sr.queue[0][1];
+    } else {
+      sr.queue = null;
+      sr.b = pos.b; sr.c = pos.c;
+    }
     sr.tokens = buildTokens(sr.b, sr.c);
-    // Start at the selected verse if the reader has one highlighted.
+    // Start at the selected verse if reading the current chapter (not a queue).
     sr.i = 0;
-    if (selectedVerse && selectedVerse.b === sr.b && selectedVerse.c === sr.c) {
+    if (!sr.queue && selectedVerse && selectedVerse.b === sr.b && selectedVerse.c === sr.c) {
       for (var k = 0; k < sr.tokens.length; k++) {
         if (sr.tokens[k].vn === selectedVerse.v && sr.tokens[k].isVerseStart) { sr.i = k; break; }
       }
     }
+    els.speedHint.textContent = sr.queue
+      ? "Speed-reading today's plan — tap play."
+      : "Tap play to begin. Tap the word to pause.";
     syncChunkSeg();
     updateWpmLabel();
     renderToken();
@@ -948,6 +981,13 @@
     els.speedReader.hidden = true;
     // Sync the main reader to where we stopped.
     if (sr.b !== pos.b || sr.c !== pos.c) { pos = { b: sr.b, c: sr.c }; renderChapter(true); }
+  }
+
+  // Launch the speed reader over a fixed [[b,c],…] playlist (used by the plan).
+  function speedReadChapters(chapters) {
+    if (!chapters || !chapters.length) return;
+    closePanels();
+    openSpeed(chapters);
   }
 
   function currentRef() {
@@ -1005,7 +1045,23 @@
     sr.timer = setTimeout(function () {
       sr.i += advance;
       if (sr.i >= sr.tokens.length) {
-        // Auto-continue into the next chapter for a continuous read.
+        if (sr.queue) {
+          // Follow the plan playlist to the next chapter, then stop at the end.
+          sr.qi++;
+          if (sr.qi < sr.queue.length) {
+            sr.b = sr.queue[sr.qi][0]; sr.c = sr.queue[sr.qi][1];
+            sr.tokens = buildTokens(sr.b, sr.c);
+            sr.i = 0;
+            step();
+          } else {
+            sr.i = sr.tokens.length - 1;
+            pause();
+            els.speedHint.textContent = "End of today's reading. Well done!";
+            els.speedHint.hidden = false;
+          }
+          return;
+        }
+        // No queue: auto-continue into the next chapter for a continuous read.
         if (sr.b < BIBLE.length - 1 || sr.c < BIBLE[sr.b].chapters.length - 1) {
           if (sr.c < BIBLE[sr.b].chapters.length - 1) { sr.c++; } else { sr.b++; sr.c = 0; }
           sr.tokens = buildTokens(sr.b, sr.c);

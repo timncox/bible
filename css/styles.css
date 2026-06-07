@@ -344,6 +344,18 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 }
 .plan-ref:active { background: var(--bg-elev2); }
 .plan-ref.done { color: var(--text-dim); text-decoration: line-through; text-decoration-color: var(--muted); }
+.plan-speed {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--accent);
+  display: inline-grid; place-items: center; cursor: pointer;
+}
+.plan-speed:active { background: var(--bg-elev2); }
+.plan-speed svg { width: 18px; height: 18px; }
+.plan-speed-day {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: calc(100% - 32px); margin: 2px 16px 8px;
+}
+.plan-speed-day svg { width: 20px; height: 20px; }
 .plan-progress { padding: 10px 16px calc(var(--safe-bottom) + 14px); display: flex; align-items: center; gap: 12px; }
 .plan-progress-track { flex: 1; height: 8px; border-radius: 6px; background: var(--bg-elev2); overflow: hidden; }
 .plan-progress-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
