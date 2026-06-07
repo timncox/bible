@@ -219,6 +219,14 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   flex: 1; border: none; background: transparent; color: var(--text);
   font-size: 1.05rem; padding: 10px 6px; outline: none;
 }
+.search-scope { display: flex; gap: 8px; padding: 8px 14px 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.search-scope::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto; white-space: nowrap; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px;
+  background: var(--bg); color: var(--text-dim); font-size: 0.85rem; font-weight: 600;
+}
+.chip.active { background: var(--accent-strong); color: #fff; border-color: var(--accent-strong); }
 .search-meta { color: var(--text-dim); margin: 0; padding: 6px 18px; font-size: 0.85rem; }
 .search-results { overflow-y: auto; flex: 1; padding: 0 8px 24px; }
 .search-result {
@@ -332,13 +340,17 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .lex-def { color: var(--text-dim); line-height: 1.55; font-size: 0.95rem; }
 .lex-kjv { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
 
-/* interlinear tab */
-.intr { line-height: 2.1; font-size: calc(1.05rem * var(--font-scale)); padding: 4px 0 8px; }
+/* interlinear tab — English with original Greek/Hebrew beneath each tagged word */
+.intr { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-start; padding: 6px 0 10px; }
 .iw {
-  cursor: pointer; border-bottom: 2px solid var(--accent);
-  padding: 1px 1px; border-radius: 3px;
+  display: inline-flex; flex-direction: column; align-items: center; text-align: center;
+  cursor: pointer; border-bottom: 2px solid var(--accent); border-radius: 4px; padding: 2px 3px;
 }
 .iw:active { background: var(--selected); }
+.iw-en { font-size: calc(1rem * var(--font-scale)); }
+.iw-orig { font-size: calc(1.25rem * var(--font-scale)); color: var(--accent); line-height: 1.3; }
+.iw-x { font-size: 0.72rem; color: var(--muted); font-style: italic; }
+.iw-plain { color: var(--text-dim); padding-top: 2px; font-size: calc(1rem * var(--font-scale)); }
 
 /* dictionary tab */
 .dict-search {

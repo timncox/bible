@@ -24,7 +24,9 @@ network required after the first visit.
   flags which voices are **Offline** vs **Online**, with adjustable speed.
 - **Read** in a clean, distraction‑free view with paragraph or verse‑by‑verse layout.
 - **Navigate** by book → chapter, with prev/next buttons, swipe gestures, and arrow keys.
-- **Search** the entire Bible instantly, with highlighted matches.
+- **Search** the entire Bible instantly, with highlighted matches. Filter by
+  scope (Old Testament / New Testament / current book), match **all words** in any
+  order, or wrap a query in `"quotes"` for an exact phrase.
 - **M'Cheyne reading plan** — the classic Robert Murray M'Cheyne one‑year plan
   (the whole Bible once, the New Testament & Psalms twice). Opens to today's
   reading, shows the 2 "Family" + 2 "Secret" passages, tap a passage to jump
@@ -39,7 +41,8 @@ network required after the first visit.
   search), and **Strong's** Hebrew & Greek lexicon (search by number or word).
   Scripture references inside the commentary and dictionary are **tappable** to
   jump straight to the cited verse. A fifth **Interlinear** tab shows the KJV verse
-  with **Strong's numbers** — tap any word to open its Hebrew/Greek lexicon entry.
+  with **Strong's numbers** and the original **Greek/Hebrew** beneath each word —
+  tap any word to open its Hebrew/Greek lexicon entry.
   All bundled for offline use (the interlinear data downloads on first use).
 - **Bookmarks** — tap any verse to bookmark, copy, or share it. Saved on‑device.
 - **Themes** — light, sepia, and dark, plus adjustable text size.
