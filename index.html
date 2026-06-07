@@ -34,6 +34,9 @@
       <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
     </button>
     <div class="appbar-actions">
+      <button id="btnSpeed" class="iconbtn" aria-label="Speed read this chapter">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>
+      </button>
       <button id="btnSearch" class="iconbtn" aria-label="Search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
       </button>
@@ -168,6 +171,51 @@
         <p class="muted small" id="storageInfo"></p>
         <p class="muted small">Version <span id="appVersion">—</span></p>
       </section>
+    </div>
+  </div>
+
+  <!-- Speed reader (RSVP + ORP) -->
+  <div id="speedReader" class="speed" hidden role="dialog" aria-label="Speed reader">
+    <div class="speed-top">
+      <button id="speedClose" class="iconbtn" aria-label="Close speed reader">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <span id="speedRef" class="speed-ref">Genesis 1:1</span>
+      <span id="speedWpm" class="speed-wpm">400 wpm</span>
+    </div>
+
+    <div class="speed-stage">
+      <div class="speed-guide top"></div>
+      <div id="speedWord" class="rsvp-word">
+        <span class="rsvp-left"></span><span class="rsvp-pivot"></span><span class="rsvp-right"></span>
+      </div>
+      <div class="speed-guide bottom"></div>
+      <p id="speedHint" class="speed-hint">Tap play to begin. Tap the word to pause.</p>
+    </div>
+
+    <div class="speed-progress"><div id="speedBar" class="speed-bar"></div></div>
+
+    <div class="speed-controls">
+      <button id="speedSlower" class="speed-ctl" aria-label="Slower">−</button>
+      <button id="speedBack" class="speed-ctl" aria-label="Rewind 10 words">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 7L6 12l5 5M18 7l-5 5 5 5"/></svg>
+      </button>
+      <button id="speedPlay" class="speed-play" aria-label="Play">
+        <svg id="speedPlayIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button id="speedFwd" class="speed-ctl" aria-label="Forward 10 words">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 7l5 5-5 5M6 7l5 5-5 5"/></svg>
+      </button>
+      <button id="speedFaster" class="speed-ctl" aria-label="Faster">+</button>
+    </div>
+
+    <div class="speed-chunk">
+      <span class="muted small">Words at a time</span>
+      <div class="seg" id="speedChunkSeg">
+        <button class="seg-btn" data-chunk="1">1</button>
+        <button class="seg-btn" data-chunk="2">2</button>
+        <button class="seg-btn" data-chunk="3">3</button>
+      </div>
     </div>
   </div>
 
