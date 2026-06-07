@@ -12,6 +12,11 @@ network required after the first visit.
 - **Fully offline** — all 66 books / 31,103 verses are cached on your device by a
   service worker. Read on a plane, in a tunnel, anywhere.
 - **Installable** — "Add to Home Screen" on iOS/Android for an app‑like, full‑screen experience.
+- **Speed reader** — hit play and read by **RSVP** (one word at a time at a fixed
+  focal point) with a **Spritz‑style ORP** pivot letter, the most effective
+  speed‑reading technique. Adjustable WPM, 1–3 word chunks, and rewind; dwell time
+  scales with word length and pauses at commas/sentences/verses to protect
+  comprehension (RSVP's known weak spot).
 - **Read** in a clean, distraction‑free view with paragraph or verse‑by‑verse layout.
 - **Navigate** by book → chapter, with prev/next buttons, swipe gestures, and arrow keys.
 - **Search** the entire Bible instantly, with highlighted matches.

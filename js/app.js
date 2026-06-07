@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.0.0";
+  var APP_VERSION = "1.1.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -24,7 +24,7 @@
   }
 
   var settings = Object.assign(
-    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph" },
+    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1 },
     load(LS.settings, {})
   );
   var pos = load(LS.pos, { b: 0, c: 0 });
@@ -41,7 +41,9 @@
    "booksPanel","bookList","chapterPanel","chapterPanelTitle","chapterGrid",
    "searchPanel","searchInput","searchClear","searchMeta","searchResults",
    "settingsPanel","fontMinus","fontPlus","fontVal","bookmarkList","bookmarkCount",
-   "btnInstall","installHint","storageInfo","appVersion","scrim","toast"
+   "btnInstall","installHint","storageInfo","appVersion","scrim","toast",
+   "btnSpeed","speedReader","speedClose","speedRef","speedWpm","speedWord","speedHint",
+   "speedBar","speedPlay","speedPlayIcon","speedSlower","speedFaster","speedBack","speedFwd","speedChunkSeg"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -155,7 +157,7 @@
 
   // keyboard
   document.addEventListener("keydown", function (e) {
-    if (anyPanelOpen() || e.target.tagName === "INPUT") return;
+    if (anyPanelOpen() || e.target.tagName === "INPUT" || !els.speedReader.hidden) return;
     if (e.key === "ArrowRight") nextChapter();
     else if (e.key === "ArrowLeft") prevChapter();
   });
@@ -553,6 +555,201 @@
     return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   }
+
+  // ======================================================================
+  // Speed reader — RSVP with ORP (Spritz-style), variable timing
+  // ======================================================================
+  // Why this design: single-word RSVP at a fixed focal point removes eye
+  // saccades (the main speed bottleneck), and the red ORP pivot keeps the
+  // recognition point anchored. To protect comprehension — RSVP's known weak
+  // spot — dwell time scales with word length and pauses lengthen at commas,
+  // sentence ends, and verse boundaries, and rewind lets you regress.
+  var sr = {
+    tokens: [],      // { text, vn, isVerseStart, isPara }
+    i: 0,
+    playing: false,
+    timer: null,
+    b: 0, c: 0       // chapter being read
+  };
+
+  // Spritz-style Optimal Recognition Point by word length.
+  function orpIndex(len) {
+    if (len <= 1) return 0;
+    if (len <= 5) return 1;
+    if (len <= 9) return 2;
+    if (len <= 13) return 3;
+    return 4;
+  }
+
+  // Build the token stream for a chapter (one entry per word, verse-aware).
+  function buildTokens(b, c) {
+    var verses = BIBLE[b].chapters[c];
+    var out = [];
+    for (var v = 0; v < verses.length; v++) {
+      var words = verses[v].split(/\s+/).filter(Boolean);
+      for (var w = 0; w < words.length; w++) {
+        out.push({ text: words[w], vn: v + 1, isVerseStart: w === 0 });
+      }
+    }
+    return out;
+  }
+
+  function openSpeed() {
+    sr.b = pos.b; sr.c = pos.c;
+    sr.tokens = buildTokens(sr.b, sr.c);
+    // Start at the selected verse if the reader has one highlighted.
+    sr.i = 0;
+    if (selectedVerse && selectedVerse.b === sr.b && selectedVerse.c === sr.c) {
+      for (var k = 0; k < sr.tokens.length; k++) {
+        if (sr.tokens[k].vn === selectedVerse.v && sr.tokens[k].isVerseStart) { sr.i = k; break; }
+      }
+    }
+    syncChunkSeg();
+    updateWpmLabel();
+    renderToken();
+    els.speedHint.hidden = false;
+    els.speedReader.hidden = false;
+    setPlaying(false);
+  }
+  function closeSpeed() {
+    pause();
+    els.speedReader.hidden = true;
+    // Sync the main reader to where we stopped.
+    if (sr.b !== pos.b || sr.c !== pos.c) { pos = { b: sr.b, c: sr.c }; renderChapter(true); }
+  }
+
+  function currentRef() {
+    var t = sr.tokens[Math.min(sr.i, sr.tokens.length - 1)];
+    var vn = t ? t.vn : 1;
+    return BIBLE[sr.b].name + " " + (sr.c + 1) + ":" + vn;
+  }
+
+  function renderToken() {
+    var slice = sr.tokens.slice(sr.i, sr.i + settings.chunk);
+    if (!slice.length) return;
+    if (slice.length === 1) {
+      // Single-word mode: ORP pivot alignment (red letter at the focal point).
+      var core = slice[0].text;
+      var letters = core.replace(/[^A-Za-z0-9'’]/g, "").length || core.length;
+      var pivot = orpIndex(letters);
+      if (pivot > core.length - 1) pivot = core.length - 1;
+      if (pivot < 0) pivot = 0;
+      els.speedWord.children[0].textContent = core.slice(0, pivot);
+      els.speedWord.children[1].textContent = core.slice(pivot, pivot + 1);
+      els.speedWord.children[2].textContent = core.slice(pivot + 1);
+    } else {
+      // Chunk mode: show the group centered (no single pivot).
+      els.speedWord.children[0].textContent = "";
+      els.speedWord.children[1].textContent = slice.map(function (t) { return t.text; }).join(" ");
+      els.speedWord.children[2].textContent = "";
+    }
+    els.speedRef.textContent = currentRef();
+    var pct = sr.tokens.length > 1 ? (sr.i / (sr.tokens.length - 1)) * 100 : 0;
+    els.speedBar.style.width = pct + "%";
+  }
+
+  // Dwell time (ms) for the current frame: WPM + word length + punctuation.
+  function dwell() {
+    var slice = sr.tokens.slice(sr.i, sr.i + settings.chunk);
+    if (!slice.length) return 60000 / settings.wpm;
+    var base = (60000 / settings.wpm) * slice.length;
+    var lenSum = 0;
+    slice.forEach(function (t) { lenSum += t.text.length; });
+    var avg = lenSum / slice.length;
+    if (avg >= 7) base *= 1 + Math.min((avg - 6) * 0.04, 0.6); // longer words linger
+    if (avg <= 2) base *= 0.9;
+    var last = slice[slice.length - 1].text;
+    if (/[,;:]$/.test(last)) base *= 1.5;          // clause pause
+    if (/[.!?]["”’)]?$/.test(last)) base *= 2.2;   // sentence pause
+    if (slice[0].isVerseStart && slice[0].vn !== 1) base *= 1.25; // breath each verse
+    return base;
+  }
+
+  function step() {
+    if (!sr.playing) return;
+    renderToken();
+    var wait = dwell();
+    var advance = settings.chunk;
+    sr.timer = setTimeout(function () {
+      sr.i += advance;
+      if (sr.i >= sr.tokens.length) {
+        // Auto-continue into the next chapter for a continuous read.
+        if (sr.b < BIBLE.length - 1 || sr.c < BIBLE[sr.b].chapters.length - 1) {
+          if (sr.c < BIBLE[sr.b].chapters.length - 1) { sr.c++; } else { sr.b++; sr.c = 0; }
+          sr.tokens = buildTokens(sr.b, sr.c);
+          sr.i = 0;
+          step();
+        } else {
+          sr.i = sr.tokens.length - 1;
+          pause();
+          els.speedHint.textContent = "End of the Bible. Tap play to re-read this chapter.";
+          els.speedHint.hidden = false;
+        }
+        return;
+      }
+      step();
+    }, wait);
+  }
+
+  function setPlaying(on) {
+    sr.playing = on;
+    els.speedPlayIcon.setAttribute("d", on ? "M7 5h4v14H7zM13 5h4v14h-4z" : "M8 5l11 7-11 7z");
+    els.speedPlay.setAttribute("aria-label", on ? "Pause" : "Play");
+    els.speedHint.hidden = on;
+  }
+  function play() {
+    if (sr.playing) return;
+    if (sr.i >= sr.tokens.length - 1) sr.i = 0;
+    setPlaying(true);
+    step();
+  }
+  function pause() {
+    setPlaying(false);
+    if (sr.timer) { clearTimeout(sr.timer); sr.timer = null; }
+  }
+  function togglePlay() { sr.playing ? pause() : play(); }
+
+  function nudge(delta) {
+    settings.wpm = Math.min(900, Math.max(150, settings.wpm + delta));
+    save(LS.settings, settings);
+    updateWpmLabel();
+  }
+  function updateWpmLabel() { els.speedWpm.textContent = settings.wpm + " wpm"; }
+
+  function seek(delta) {
+    sr.i = Math.min(sr.tokens.length - 1, Math.max(0, sr.i + delta));
+    renderToken();
+  }
+  function syncChunkSeg() {
+    els.speedChunkSeg.querySelectorAll("[data-chunk]").forEach(function (b) {
+      b.classList.toggle("active", +b.getAttribute("data-chunk") === settings.chunk);
+    });
+  }
+
+  els.btnSpeed.addEventListener("click", function () { if (BIBLE) openSpeed(); });
+  els.speedClose.addEventListener("click", closeSpeed);
+  els.speedPlay.addEventListener("click", togglePlay);
+  els.speedWord.addEventListener("click", togglePlay);
+  els.speedSlower.addEventListener("click", function () { nudge(-50); });
+  els.speedFaster.addEventListener("click", function () { nudge(50); });
+  els.speedBack.addEventListener("click", function () { seek(-10); });
+  els.speedFwd.addEventListener("click", function () { seek(10); });
+  els.speedChunkSeg.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-chunk]");
+    if (!btn) return;
+    settings.chunk = +btn.getAttribute("data-chunk");
+    save(LS.settings, settings);
+    syncChunkSeg();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (els.speedReader.hidden) return;
+    if (e.key === " ") { e.preventDefault(); togglePlay(); }
+    else if (e.key === "Escape") closeSpeed();
+    else if (e.key === "ArrowUp") nudge(50);
+    else if (e.key === "ArrowDown") nudge(-50);
+    else if (e.key === "ArrowLeft") seek(-10);
+    else if (e.key === "ArrowRight") seek(10);
+  });
 
   // ======================================================================
   // Service worker
