@@ -17,6 +17,11 @@ network required after the first visit.
   speed‑reading technique. Adjustable WPM, 1–3 word chunks, and rewind; dwell time
   scales with word length and pauses at commas/sentences/verses to protect
   comprehension (RSVP's known weak spot).
+- **Listen (offline audio)** — hit the headphones icon and the chapter is read
+  aloud using your **device's built‑in text‑to‑speech voices**, highlighting the
+  current verse and auto‑advancing across chapters. No audio files, no network:
+  it works offline whenever an on‑device voice is selected. The voice picker
+  flags which voices are **Offline** vs **Online**, with adjustable speed.
 - **Read** in a clean, distraction‑free view with paragraph or verse‑by‑verse layout.
 - **Navigate** by book → chapter, with prev/next buttons, swipe gestures, and arrow keys.
 - **Search** the entire Bible instantly, with highlighted matches.

@@ -34,6 +34,9 @@
       <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
     </button>
     <div class="appbar-actions">
+      <button id="btnListen" class="iconbtn" aria-label="Listen to this chapter">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2.5" y="13" width="4" height="7" rx="1.5"/><rect x="17.5" y="13" width="4" height="7" rx="1.5"/></svg>
+      </button>
       <button id="btnSpeed" class="iconbtn" aria-label="Speed read this chapter">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>
       </button>
@@ -54,6 +57,26 @@
     </div>
     <article id="chapter" class="chapter" hidden></article>
   </main>
+
+  <!-- Audio "now playing" bar -->
+  <div id="audioBar" class="audiobar" hidden role="region" aria-label="Audio playback">
+    <button id="audioPlay" class="audio-btn primary" aria-label="Pause">
+      <svg id="audioPlayIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <div class="audio-info">
+      <span id="audioRef" class="audio-ref">Genesis 1:1</span>
+      <span id="audioVoice" class="audio-voice muted small">Device voice</span>
+    </div>
+    <button id="audioSlower" class="audio-btn" aria-label="Slower">−</button>
+    <span id="audioRate" class="audio-rate">1.0×</span>
+    <button id="audioFaster" class="audio-btn" aria-label="Faster">+</button>
+    <button id="audioVoiceBtn" class="audio-btn" aria-label="Choose voice">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 7v10M16 7v10M4 10v4M20 10v4"/></svg>
+    </button>
+    <button id="audioStop" class="audio-btn" aria-label="Stop">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+    </button>
+  </div>
 
   <!-- Bottom navigation -->
   <nav class="bottomnav" aria-label="Chapter navigation">
@@ -172,6 +195,16 @@
         <p class="muted small">Version <span id="appVersion">—</span></p>
       </section>
     </div>
+  </div>
+
+  <!-- Voice picker -->
+  <div id="voicePanel" class="panel bottom" hidden aria-label="Voices">
+    <div class="panel-head">
+      <h2>Voice</h2>
+      <button class="iconbtn close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <p class="search-meta">Voices marked <strong>Offline</strong> work with no internet. These come from your device.</p>
+    <ul id="voiceList" class="booklist"></ul>
   </div>
 
   <!-- Speed reader (RSVP + ORP) -->
