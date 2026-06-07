@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.5.1";
+  var APP_VERSION = "1.6.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -45,6 +45,7 @@
    "btnInstall","installHint","storageInfo","appVersion","scrim","toast",
    "btnSpeed","speedReader","speedClose","speedRef","speedWpm","speedWord","speedHint",
    "speedBar","speedPlay","speedPlayIcon","speedSlower","speedFaster","speedBack","speedFwd","speedChunkSeg",
+   "speedPrevCh","speedNextCh",
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
    "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
@@ -972,6 +973,7 @@
     syncChunkSeg();
     updateWpmLabel();
     renderToken();
+    updateChapNav();
     els.speedHint.hidden = false;
     els.speedReader.hidden = false;
     setPlaying(false);
@@ -1052,6 +1054,7 @@
             sr.b = sr.queue[sr.qi][0]; sr.c = sr.queue[sr.qi][1];
             sr.tokens = buildTokens(sr.b, sr.c);
             sr.i = 0;
+            updateChapNav();
             step();
           } else {
             sr.i = sr.tokens.length - 1;
@@ -1066,6 +1069,7 @@
           if (sr.c < BIBLE[sr.b].chapters.length - 1) { sr.c++; } else { sr.b++; sr.c = 0; }
           sr.tokens = buildTokens(sr.b, sr.c);
           sr.i = 0;
+          updateChapNav();
           step();
         } else {
           sr.i = sr.tokens.length - 1;
@@ -1108,6 +1112,44 @@
     sr.i = Math.min(sr.tokens.length - 1, Math.max(0, sr.i + delta));
     renderToken();
   }
+
+  // Jump a whole chapter back/forward — within the plan queue if reading one,
+  // otherwise through the Bible in order.
+  function jumpChapter(dir) {
+    var moved = false;
+    if (sr.queue) {
+      var nq = sr.qi + dir;
+      if (nq >= 0 && nq < sr.queue.length) {
+        sr.qi = nq; sr.b = sr.queue[nq][0]; sr.c = sr.queue[nq][1]; moved = true;
+      }
+    } else if (dir < 0) {
+      if (sr.c > 0) { sr.c--; moved = true; }
+      else if (sr.b > 0) { sr.b--; sr.c = BIBLE[sr.b].chapters.length - 1; moved = true; }
+    } else {
+      if (sr.c < BIBLE[sr.b].chapters.length - 1) { sr.c++; moved = true; }
+      else if (sr.b < BIBLE.length - 1) { sr.b++; sr.c = 0; moved = true; }
+    }
+    if (!moved) return;
+    if (sr.timer) { clearTimeout(sr.timer); sr.timer = null; }
+    sr.tokens = buildTokens(sr.b, sr.c);
+    sr.i = 0;
+    renderToken();
+    updateChapNav();
+    if (sr.playing) step();
+  }
+
+  function updateChapNav() {
+    var atStart, atEnd;
+    if (sr.queue) {
+      atStart = sr.qi <= 0;
+      atEnd = sr.qi >= sr.queue.length - 1;
+    } else {
+      atStart = (sr.b === 0 && sr.c === 0);
+      atEnd = (sr.b === BIBLE.length - 1 && sr.c === BIBLE[sr.b].chapters.length - 1);
+    }
+    els.speedPrevCh.disabled = atStart;
+    els.speedNextCh.disabled = atEnd;
+  }
   function syncChunkSeg() {
     els.speedChunkSeg.querySelectorAll("[data-chunk]").forEach(function (b) {
       b.classList.toggle("active", +b.getAttribute("data-chunk") === settings.chunk);
@@ -1122,6 +1164,8 @@
   els.speedFaster.addEventListener("click", function () { nudge(50); });
   els.speedBack.addEventListener("click", function () { seek(-10); });
   els.speedFwd.addEventListener("click", function () { seek(10); });
+  els.speedPrevCh.addEventListener("click", function () { jumpChapter(-1); });
+  els.speedNextCh.addEventListener("click", function () { jumpChapter(1); });
   els.speedChunkSeg.addEventListener("click", function (e) {
     var btn = e.target.closest("[data-chunk]");
     if (!btn) return;
@@ -1135,8 +1179,8 @@
     else if (e.key === "Escape") closeSpeed();
     else if (e.key === "ArrowUp") nudge(50);
     else if (e.key === "ArrowDown") nudge(-50);
-    else if (e.key === "ArrowLeft") seek(-10);
-    else if (e.key === "ArrowRight") seek(10);
+    else if (e.key === "ArrowLeft") { if (e.shiftKey) jumpChapter(-1); else seek(-10); }
+    else if (e.key === "ArrowRight") { if (e.shiftKey) jumpChapter(1); else seek(10); }
   });
 
   // ======================================================================

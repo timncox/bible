@@ -442,6 +442,16 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   color: var(--muted); font-size: 0.85rem; margin: 0; padding: 0 20px;
 }
 
+.speed-chapnav { display: flex; gap: 10px; padding: 12px 16px 0; }
+.speed-chap {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 8px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--bg-elev); color: var(--text); font-size: 0.9rem; font-weight: 600; cursor: pointer;
+}
+.speed-chap:active { background: var(--bg-elev2); }
+.speed-chap:disabled { opacity: 0.35; }
+.speed-chap svg { width: 20px; height: 20px; }
+
 .speed-progress { height: 4px; background: var(--bg-elev2); }
 .speed-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.12s linear; }
 
