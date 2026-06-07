@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.7.0";
+  var APP_VERSION = "1.8.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -100,6 +100,9 @@
 
     var html = '<h1>' + esc(book.name) + '</h1>' +
                '<p class="ch-sub">Chapter ' + (pos.c + 1) + ' · ' + verses.length + ' verses</p>' +
+               '<button class="ch-commentary" type="button">' +
+               '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 0 1 2-2h7v16H6a2 2 0 0 0-2 2zM20 3v16a2 2 0 0 0-2 2h-5V3z"/></svg>' +
+               'Commentary &amp; study</button>' +
                '<p class="verses">';
     for (var i = 0; i < verses.length; i++) {
       var vn = i + 1;
@@ -249,6 +252,7 @@
   // Verse selection + actions
   // ======================================================================
   els.chapter.addEventListener("click", function (e) {
+    if (e.target.closest(".ch-commentary")) { openStudyChapter(pos.b, pos.c); return; }
     var v = e.target.closest(".v");
     if (!v) return;
     var vn = +v.getAttribute("data-v");
@@ -569,28 +573,40 @@
   // Study — cross-references (Treasury of Scripture Knowledge, openbible.info)
   // and Matthew Henry's Concise Commentary. Both loaded lazily and cached.
   // ======================================================================
-  var TSK_URL = "data/tsk.json", MHC_URL = "data/mhc.json";
-  var tskData = null, mhcData = null;
-  var studyVerse = null, studyTab = "xref";
+  var TSK_URL = "data/tsk.json", MHC_URL = "data/mhc.json", EASTON_URL = "data/easton.json";
+  var tskData = null, mhcData = null, eastonData = null;
+  var studyVerse = null, studyTab = "xref", dictQuery = "";
 
   function loadStudyData(cb) {
-    if (tskData && mhcData) { cb(); return; }
+    if (tskData && mhcData && eastonData) { cb(); return; }
     els.studyContent.innerHTML = '<p class="study-loading">Loading study tools…</p>';
-    Promise.all([
-      tskData ? Promise.resolve(tskData) : fetch(TSK_URL).then(function (r) { return r.json(); }),
-      mhcData ? Promise.resolve(mhcData) : fetch(MHC_URL).then(function (r) { return r.json(); })
-    ]).then(function (res) {
-      tskData = res[0]; mhcData = res[1]; cb();
-    }).catch(function () {
-      els.studyContent.innerHTML = '<p class="study-empty">Couldn’t load study data. Connect to the internet once so it can be saved for offline use.</p>';
-    });
+    var get = function (have, url) { return have ? Promise.resolve(have) : fetch(url).then(function (r) { return r.json(); }); };
+    Promise.all([get(tskData, TSK_URL), get(mhcData, MHC_URL), get(eastonData, EASTON_URL)])
+      .then(function (res) { tskData = res[0]; mhcData = res[1]; eastonData = res[2]; cb(); })
+      .catch(function () {
+        els.studyContent.innerHTML = '<p class="study-empty">Couldn’t load study data. Connect to the internet once so it can be saved for offline use.</p>';
+      });
   }
+
+  function stripTags(t) { return (t || "").replace(/<[^>]+>/g, ""); }
 
   function openStudy(s) {
     studyVerse = { b: s.b, c: s.c, v: s.v };
-    studyTab = "xref";
+    dictQuery = "";
     setStudyTab("xref");
     els.studyRef.textContent = verseRef(studyVerse);
+    clearVerseSelection();
+    openPanel(els.studyPanel);
+    loadStudyData(renderStudy);
+  }
+
+  // Open the study panel for a whole chapter (no specific verse) — defaults to
+  // the commentary tab. studyVerse.v = 0 signals "chapter-level".
+  function openStudyChapter(b, c) {
+    studyVerse = { b: b, c: c, v: 0 };
+    dictQuery = "";
+    setStudyTab("comm");
+    els.studyRef.textContent = BIBLE[b].name + " " + (c + 1);
     clearVerseSelection();
     openPanel(els.studyPanel);
     loadStudyData(renderStudy);
@@ -605,13 +621,18 @@
 
   function renderStudy() {
     if (studyTab === "xref") renderXrefs();
-    else renderCommentary();
+    else if (studyTab === "comm") renderCommentary();
+    else renderDictionary();
   }
 
   function renderXrefs() {
+    els.studyCredit.textContent = "Cross-references: openbible.info (CC BY)";
+    if (studyVerse.v === 0) {
+      els.studyContent.innerHTML = '<p class="study-empty">Tap a verse in the chapter to see its cross-references.</p>';
+      return;
+    }
     var key = studyVerse.b + "." + studyVerse.c + "." + studyVerse.v;
     var refs = (tskData && tskData[key]) || [];
-    els.studyCredit.textContent = "Cross-references: openbible.info (CC BY)";
     if (!refs.length) {
       els.studyContent.innerHTML = '<p class="study-empty">No cross-references for this verse.</p>';
       return;
@@ -645,7 +666,7 @@
       html += '<div class="comm-passage">' +
         '<div class="comm-range">' + BIBLE[studyVerse.b].name + " " + (studyVerse.c + 1) + ":" + (s === e ? s : s + "–" + e) +
         (isCur ? " · this verse" : "") + '</div>' +
-        '<div class="comm-text' + (isCur ? " current" : "") + '">' + esc(text) + '</div></div>';
+        '<div class="comm-text' + (isCur ? " current" : "") + '">' + esc(stripTags(text)) + '</div></div>';
     });
     els.studyContent.innerHTML = html;
     // scroll the passage containing the tapped verse into view
@@ -653,10 +674,64 @@
     if (cur) cur.scrollIntoView({ block: "start" });
   }
 
+  // ---- Dictionary (Easton's) ----
+  function eastonEntry(word) {
+    var key = String(word).toLowerCase().replace(/[^a-z'’-]/g, "");
+    return eastonData && eastonData[key] ? { key: key, e: eastonData[key] } : null;
+  }
+  function verseDictTerms() {
+    if (studyVerse.v === 0) return [];
+    var text = (BIBLE[studyVerse.b].chapters[studyVerse.c] || [])[studyVerse.v - 1] || "";
+    var seen = {}, out = [];
+    text.split(/\s+/).forEach(function (w) {
+      var hit = eastonEntry(w);
+      if (hit && !seen[hit.key] && hit.key.length >= 3) { seen[hit.key] = 1; out.push(hit.e); }
+    });
+    return out.slice(0, 10);
+  }
+  function searchEaston(q) {
+    var n = q.toLowerCase(), pre = [], inc = [];
+    var keys = Object.keys(eastonData);
+    for (var i = 0; i < keys.length && pre.length + inc.length < 40; i++) {
+      var k = keys[i];
+      if (k.indexOf(n) === 0) pre.push(eastonData[k]);
+      else if (k.indexOf(n) !== -1) inc.push(eastonData[k]);
+    }
+    return pre.concat(inc).slice(0, 30);
+  }
+  function eastonListHtml(list) {
+    if (!list.length) return '<p class="study-empty">No dictionary entries found.</p>';
+    return list.map(function (e) {
+      return '<div class="dict-entry"><div class="dict-word">' + esc(e.w) +
+        '</div><div class="dict-def">' + esc(stripTags(e.d)) + '</div></div>';
+    }).join("");
+  }
+  function updateDictResults() {
+    var box = els.studyContent.querySelector("#dictResults");
+    if (!box) return;
+    if (dictQuery && dictQuery.length >= 2) box.innerHTML = eastonListHtml(searchEaston(dictQuery));
+    else {
+      var terms = verseDictTerms();
+      box.innerHTML = terms.length
+        ? '<p class="dict-hint">From this verse:</p>' + eastonListHtml(terms)
+        : '<p class="dict-hint">Type a word to look it up.</p>';
+    }
+  }
+  function renderDictionary() {
+    els.studyCredit.textContent = "Easton’s Bible Dictionary (public domain)";
+    els.studyContent.innerHTML =
+      '<input id="dictSearch" class="dict-search" type="search" autocomplete="off" ' +
+      'placeholder="Look up a word…" value="' + esc(dictQuery) + '"><div id="dictResults"></div>';
+    updateDictResults();
+  }
+  els.studyContent.addEventListener("input", function (e) {
+    if (e.target && e.target.id === "dictSearch") { dictQuery = e.target.value; updateDictResults(); }
+  });
+
   els.studyPanel.querySelectorAll("[data-studytab]").forEach(function (b) {
     b.addEventListener("click", function () {
       setStudyTab(b.getAttribute("data-studytab"));
-      if (tskData && mhcData) renderStudy();
+      if (tskData && mhcData && eastonData) renderStudy();
       else loadStudyData(renderStudy);
     });
   });

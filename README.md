@@ -32,10 +32,11 @@ network required after the first visit.
   **speed‑read** a single reading or the whole day's readings (the RSVP reader
   plays through each passage's chapters in order). Works offline and your
   progress is saved on‑device.
-- **Study tools** — tap any verse and choose **Study** for **cross‑references**
-  (Treasury of Scripture Knowledge) and **Matthew Henry's Concise Commentary**.
-  Cross‑references are tappable to jump straight to the related verse. Both are
-  bundled for offline use.
+- **Study tools** — tap any verse and choose **Study**, or use the **Commentary &
+  study** button at the top of any chapter. Three tabs: **cross‑references**
+  (Treasury of Scripture Knowledge, tappable to jump to the related verse),
+  **Matthew Henry's Concise Commentary**, and **Easton's Bible Dictionary**
+  (auto‑suggests terms from the verse, plus full search). All bundled for offline use.
 - **Bookmarks** — tap any verse to bookmark, copy, or share it. Saved on‑device.
 - **Themes** — light, sepia, and dark, plus adjustable text size.
 - All preferences, bookmarks, and your last reading position are stored locally
@@ -104,6 +105,7 @@ properly licensed translation if you obtain one.
 - App code: MIT.
 - Scripture text: World English Bible — public domain.
 - Matthew Henry's Concise Commentary — public domain.
+- Easton's Bible Dictionary — public domain.
 - Cross-references: Treasury of Scripture Knowledge via
   [openbible.info](https://www.openbible.info/labs/cross-references/), licensed
   **CC BY** (attribution required).

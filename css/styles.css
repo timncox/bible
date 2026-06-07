@@ -313,6 +313,27 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .comm-text.current { /* passage containing the tapped verse */ }
 .study-credit { padding: 0 16px calc(var(--safe-bottom) + 12px); margin: 0; }
 
+/* dictionary tab */
+.dict-search {
+  width: 100%; box-sizing: border-box; margin: 4px 0 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+  color: var(--text); font-size: 1rem; padding: 11px 12px; outline: none;
+}
+.dict-hint { color: var(--text-dim); font-size: 0.85rem; margin: 6px 2px; }
+.dict-entry { padding: 10px 2px 12px; border-bottom: 1px solid var(--line); }
+.dict-word { font-weight: 700; margin-bottom: 4px; }
+.dict-def { color: var(--text-dim); line-height: 1.6; font-size: 0.95rem; white-space: pre-wrap; }
+
+/* chapter-level commentary button */
+.ch-commentary {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin: 0 0 20px; padding: 9px 14px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg-elev); color: var(--accent); font-weight: 600; font-size: 0.9rem; cursor: pointer;
+}
+.ch-commentary:active { background: var(--bg-elev2); }
+.ch-commentary svg { width: 18px; height: 18px; }
+
 /* ===== Today's-reading floating button ===== */
 .fab {
   position: fixed; right: 16px; bottom: calc(var(--safe-bottom) + 78px);
