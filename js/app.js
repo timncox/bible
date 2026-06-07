@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.11.0";
+  var APP_VERSION = "1.12.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -25,7 +25,7 @@
   }
 
   var settings = Object.assign(
-    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null },
+    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null },
     load(LS.settings, {})
   );
   var pos = load(LS.pos, { b: 0, c: 0 });
@@ -40,14 +40,14 @@
   ["btnBooks","btnRef","refText","btnSearch","btnMenu","reader","loading","chapter",
    "btnPrev","btnNext","btnPickChapter","navRef","verseActions","verseActionsRef","vaBookmarkLabel",
    "booksPanel","bookList","chapterPanel","chapterPanelTitle","chapterGrid",
-   "searchPanel","searchInput","searchClear","searchMeta","searchResults",
+   "searchPanel","searchInput","searchClear","searchMeta","searchResults","searchScope","scopeBook",
    "settingsPanel","fontMinus","fontPlus","fontVal","bookmarkList","bookmarkCount",
    "btnInstall","installHint","storageInfo","appVersion","scrim","toast",
    "btnSpeed","speedReader","speedClose","speedRef","speedWpm","speedWord","speedHint",
    "speedBar","speedPlay","speedPlayIcon","speedSlower","speedFaster","speedBack","speedFwd","speedChunkSeg",
    "speedPrevCh","speedNextCh",
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
-   "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList",
+   "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList","voiceFilter",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
    "planReadings","planBar","planProgressLabel","planSpeedDay","planListenDay","fabPlan","fabDot",
    "studyPanel","studyRef","studyContent","studyCredit"
@@ -383,8 +383,10 @@
   // ======================================================================
   // Search
   // ======================================================================
-  var searchTimer = null;
+  var searchTimer = null, searchScope = "all", searchBook = 0;
   els.btnSearch.addEventListener("click", function () {
+    searchBook = pos.b;
+    els.scopeBook.textContent = BIBLE[pos.b].name;
     openPanel(els.searchPanel);
     setTimeout(function () { els.searchInput.focus(); }, 80);
   });
@@ -395,23 +397,50 @@
   els.searchClear.addEventListener("click", function () {
     els.searchInput.value = ""; els.searchInput.focus(); runSearch();
   });
+  els.searchScope.addEventListener("click", function (e) {
+    var c = e.target.closest("[data-scope]");
+    if (!c) return;
+    searchScope = c.getAttribute("data-scope");
+    els.searchScope.querySelectorAll("[data-scope]").forEach(function (b) {
+      b.classList.toggle("active", b === c);
+    });
+    runSearch();
+  });
+
+  function scopeRange() {
+    if (searchScope === "ot") return [0, OT_COUNT];
+    if (searchScope === "nt") return [OT_COUNT, BIBLE.length];
+    if (searchScope === "book") return [searchBook, searchBook + 1];
+    return [0, BIBLE.length];
+  }
+  function scopeLabel() {
+    if (searchScope === "ot") return "the Old Testament";
+    if (searchScope === "nt") return "the New Testament";
+    if (searchScope === "book") return BIBLE[searchBook].name;
+    return "the whole Bible";
+  }
 
   function runSearch() {
     var q = els.searchInput.value.trim();
     if (q.length < 2) {
-      els.searchMeta.textContent = "Type at least 2 letters to search all 31,000+ verses.";
+      els.searchMeta.textContent = 'Search ' + scopeLabel() + '. Tip: multiple words match verses containing all of them; wrap in "quotes" for an exact phrase.';
       els.searchResults.innerHTML = "";
       return;
     }
-    var needle = q.toLowerCase();
-    var results = [];
-    var MAX = 300;
-    for (var b = 0; b < BIBLE.length && results.length < MAX; b++) {
+    // "quoted" -> exact phrase; otherwise every word must appear (AND).
+    var phrase = q.match(/^"(.+)"$/);
+    var terms = phrase ? [phrase[1]] : q.split(/\s+/).filter(Boolean);
+    var lowTerms = terms.map(function (t) { return t.toLowerCase(); });
+    var range = scopeRange(), results = [], MAX = 300;
+    for (var b = range[0]; b < range[1] && results.length < MAX; b++) {
       var chs = BIBLE[b].chapters;
       for (var c = 0; c < chs.length && results.length < MAX; c++) {
         var vs = chs[c];
         for (var v = 0; v < vs.length; v++) {
-          if (vs[v].toLowerCase().indexOf(needle) !== -1) {
+          var low = vs[v].toLowerCase();
+          var hit = true;
+          for (var t = 0; t < lowTerms.length; t++) { if (low.indexOf(lowTerms[t]) === -1) { hit = false; break; } }
+          if (hit) {
             results.push({ b: b, c: c, v: v + 1, text: vs[v] });
             if (results.length >= MAX) break;
           }
@@ -419,24 +448,28 @@
       }
     }
     els.searchMeta.textContent = results.length
-      ? (results.length >= MAX ? "Showing first " + MAX + " matches" : results.length + " match" + (results.length === 1 ? "" : "es"))
-      : "No matches found.";
+      ? ((results.length >= MAX ? "Showing first " + MAX : results.length + " match" + (results.length === 1 ? "" : "es")) + " in " + scopeLabel())
+      : "No matches in " + scopeLabel() + ".";
     var html = "";
     results.forEach(function (r) {
       html += '<div class="search-result" data-b="' + r.b + '" data-c="' + r.c + '" data-v="' + r.v + '">' +
               '<div class="sr-ref">' + esc(BIBLE[r.b].name + " " + (r.c + 1) + ":" + r.v) + '</div>' +
-              '<div class="sr-text">' + highlight(r.text, q) + '</div></div>';
+              '<div class="sr-text">' + highlightTerms(r.text, terms) + '</div></div>';
     });
-    els.searchResults.innerHTML = html || '<p class="search-empty">No verses contain &ldquo;' + esc(q) + '&rdquo;.</p>';
+    els.searchResults.innerHTML = html || '<p class="search-empty">No verses in ' + esc(scopeLabel()) + ' match that.</p>';
     els.searchResults.scrollTop = 0;
   }
-  function highlight(text, q) {
-    var lower = text.toLowerCase(), nl = q.toLowerCase(), out = "", from = 0, idx;
-    while ((idx = lower.indexOf(nl, from)) !== -1) {
-      out += esc(text.slice(from, idx)) + "<mark>" + esc(text.slice(idx, idx + q.length)) + "</mark>";
-      from = idx + q.length;
+  function highlightTerms(text, terms) {
+    var escd = terms.map(function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).filter(Boolean);
+    if (!escd.length) return esc(text);
+    var re = new RegExp("(" + escd.join("|") + ")", "gi");
+    var out = "", last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index === re.lastIndex) { re.lastIndex++; continue; }
+      out += esc(text.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>";
+      last = m.index + m[0].length;
     }
-    return out + esc(text.slice(from));
+    return out + esc(text.slice(last));
   }
   els.searchResults.addEventListener("click", function (e) {
     var r = e.target.closest(".search-result");
@@ -746,11 +779,14 @@
     return s.split(" ").map(function (tok) {
       var m = tok.match(/^(.*?)((?:\[[GH]\d+\])+)$/);
       if (m && m[1]) {
-        var first = m[2].match(/\[([GH]\d+)\]/);
-        return '<span class="iw" data-s="' + first[1] + '">' + esc(m[1]) + '</span>';
+        var num = m[2].match(/\[([GH]\d+)\]/)[1];
+        var e = lexData && lexData[num];
+        var orig = (e && e.l) ? '<span class="iw-orig"' + (num.charAt(0) === "H" ? ' dir="rtl"' : "") + ">" + esc(e.l) + "</span>" : "";
+        var xlit = (e && e.x) ? '<span class="iw-x">' + esc(e.x) + "</span>" : "";
+        return '<span class="iw" data-s="' + num + '"><span class="iw-en">' + esc(m[1]) + "</span>" + orig + xlit + "</span>";
       }
-      return esc(tok.replace(/\[[GH]\d+\]/g, ""));
-    }).join(" ");
+      return '<span class="iw-plain">' + esc(tok.replace(/\[[GH]\d+\]/g, "")) + "</span>";
+    }).join("");
   }
   function renderInterlinear() {
     els.studyCredit.textContent = "KJV with Strong’s numbers (public domain)";
@@ -1116,25 +1152,32 @@
     queue: null, qi: 0
   };
 
-  function loadVoices(cb) {
-    var v = speechSynthesis.getVoices();
-    if (v && v.length) { cb(v); return; }
-    var handler = function () {
-      speechSynthesis.removeEventListener("voiceschanged", handler);
-      cb(speechSynthesis.getVoices());
-    };
-    speechSynthesis.addEventListener("voiceschanged", handler);
+  // Pull the current voice list (sorted: English + on-device first), resolve the
+  // saved voice, and refresh the picker if it's open. Voices on iOS/Android can
+  // arrive late and change, so this is called on boot AND on every voiceschanged.
+  function refreshVoices() {
+    var vs = (speechSynthesis.getVoices() || []).slice();
+    vs.sort(function (a, b) {
+      var ae = /^en/i.test(a.lang), be = /^en/i.test(b.lang);
+      if (ae !== be) return ae ? -1 : 1;
+      if (a.localService !== b.localService) return a.localService ? -1 : 1;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+    au.voices = vs;
+    au.voice = resolveVoice() || au.voice || vs[0] || null;
+    updateAudioLabels();
+    if (!els.voicePanel.hidden) renderVoiceList();
   }
-
-  function pickDefaultVoice() {
-    var vs = au.voices;
-    if (!vs.length) return null;
-    var byName = vs.filter(function (v) { return v.name === settings.voiceName; })[0];
+  // Identify the saved voice by voiceURI (unique — premium/enhanced voices can
+  // share a name with the default, so name alone picks the wrong one).
+  function resolveVoice() {
+    var vs = au.voices; if (!vs.length) return null;
+    var byUri = settings.voiceURI && vs.filter(function (v) { return v.voiceURI === settings.voiceURI; })[0];
+    if (byUri) return byUri;
+    var byName = settings.voiceName && vs.filter(function (v) { return v.name === settings.voiceName; })[0];
     if (byName) return byName;
     var localEn = vs.filter(function (v) { return v.localService && /^en/i.test(v.lang); })[0];
-    if (localEn) return localEn;
-    var anyEn = vs.filter(function (v) { return /^en/i.test(v.lang); })[0];
-    return anyEn || vs[0];
+    return localEn || vs.filter(function (v) { return /^en/i.test(v.lang); })[0] || vs[0];
   }
 
   // Build short speakable chunks (one per sentence) for a chapter, tagged with
@@ -1271,35 +1314,47 @@
     if (au.on && !au.paused) { speechSynthesis.cancel(); speakChunk(); } // apply new rate now
   }
 
-  function openVoicePanel() {
+  var voiceFilter = "";
+  function renderVoiceList() {
+    var q = voiceFilter.toLowerCase();
     var html = "";
     au.voices.forEach(function (v, i) {
-      var sel = (au.voice && v.name === au.voice.name) ? ' class="current"' : "";
+      if (q && (v.name + " " + v.lang).toLowerCase().indexOf(q) === -1) return;
+      var cur = (au.voice && v.voiceURI === au.voice.voiceURI) ? " current" : "";
       var badge = v.localService ? '<span class="badge">Offline</span>' : '<span class="badge online">Online</span>';
-      html += '<li' + sel + ' data-vi="' + i + '"><span class="voice-row"><span class="voice-name">' +
+      html += '<li class="' + cur.trim() + '" data-vi="' + i + '"><span class="voice-row"><span class="voice-name">' +
               esc(v.name) + ' <span class="voice-lang">' + esc(v.lang) + '</span></span>' + badge + '</span></li>';
     });
-    els.voiceList.innerHTML = html || '<li class="bookmark-empty">No voices available on this device.</li>';
+    els.voiceList.innerHTML = html || '<li class="bookmark-empty">No matching voices. Download more (e.g. Premium/Enhanced) in your device settings — they’ll appear here.</li>';
+  }
+  function openVoicePanel() {
+    voiceFilter = "";
+    if (TTS) refreshVoices();
+    if (els.voiceFilter) els.voiceFilter.value = "";
+    renderVoiceList();
     openPanel(els.voicePanel);
   }
   els.voiceList.addEventListener("click", function (e) {
     var li = e.target.closest("li[data-vi]");
     if (!li) return;
     au.voice = au.voices[+li.getAttribute("data-vi")];
+    settings.voiceURI = au.voice.voiceURI;
     settings.voiceName = au.voice.name;
     save(LS.settings, settings);
     updateAudioLabels();
     closePanels();
     if (au.on && !au.paused) { speechSynthesis.cancel(); speakChunk(); }
   });
+  if (els.voiceFilter) {
+    els.voiceFilter.addEventListener("input", function () { voiceFilter = els.voiceFilter.value; renderVoiceList(); });
+  }
 
   if (TTS) {
-    loadVoices(function (vs) {
-      au.voices = vs.filter(function (v) { return /^en/i.test(v.lang); });
-      if (!au.voices.length) au.voices = vs;
-      au.voice = pickDefaultVoice();
-      updateAudioLabels();
-    });
+    refreshVoices();
+    speechSynthesis.addEventListener("voiceschanged", refreshVoices);
+    // iOS/Android can populate the voice list a beat later — re-poll a couple of times.
+    setTimeout(refreshVoices, 300);
+    setTimeout(refreshVoices, 1500);
   } else {
     els.btnListen.style.display = "none";
   }
