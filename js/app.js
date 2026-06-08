@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.13.0";
+  var APP_VERSION = "1.14.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -47,7 +47,7 @@
    "speedBar","speedPlay","speedPlayIcon","speedSlower","speedFaster","speedBack","speedFwd","speedChunkSeg",
    "speedPrevCh","speedNextCh",
    "btnListen","audioBar","audioPlay","audioPlayIcon","audioRef","audioVoice","audioSlower","audioFaster",
-   "audioRate","audioVoiceBtn","audioStop","voicePanel","voiceList","voiceFilter","voiceNote",
+   "audioRate","audioVoiceBtn","audioStop","audioSleep","audioSleepLabel","voicePanel","voiceList","voiceFilter","voiceNote",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
    "planReadings","planBar","planProgressLabel","planSpeedDay","planListenDay","fabPlan","fabDot",
    "studyPanel","studyRef","studyContent","studyCredit"
@@ -1293,6 +1293,8 @@
     setAudioPlayIcon(true);
     updateAudioLabels();
     updateFab();
+    startKeepAlive();
+    updateMediaMeta();
     speakChunk();
   }
   function listenChapters(chapters) {
@@ -1332,6 +1334,7 @@
     renderChapter(false);
     au.chunks = buildAudioChunks(au.b, au.c);
     au.ci = 0; au.lastV = -1;
+    updateMediaMeta();
     speakChunk();
   }
 
@@ -1355,11 +1358,14 @@
     au.paused = true;
     speechSynthesis.cancel();
     setAudioPlayIcon(false);
+    updateMediaMeta();
   }
   function resumeListen() {
     if (!au.on) return;
     au.paused = false;
     setAudioPlayIcon(true);
+    startKeepAlive();
+    updateMediaMeta();
     speakChunk();
   }
   function toggleListen() {
@@ -1369,6 +1375,9 @@
   function stopListen() {
     au.on = false; au.paused = false; au.queue = null;
     if (TTS) speechSynthesis.cancel();
+    clearSleep();
+    stopKeepAlive();
+    updateMediaMeta();
     var prev = els.chapter.querySelector(".v.speaking");
     if (prev) prev.classList.remove("speaking");
     els.audioBar.hidden = true;
@@ -1379,6 +1388,104 @@
     save(LS.settings, settings);
     updateAudioLabels();
     if (au.on && !au.paused) { speechSynthesis.cancel(); speakChunk(); } // apply new rate now
+  }
+
+  // ---- Sleep timer ----
+  var SLEEP_OPTS = [0, 10, 20, 30, 45, 60];
+  var sleepIdx = 0, sleepTimer = null, sleepEnd = 0, sleepTick = null;
+  function cycleSleep() { sleepIdx = (sleepIdx + 1) % SLEEP_OPTS.length; setSleep(SLEEP_OPTS[sleepIdx]); }
+  function setSleep(mins) {
+    if (sleepTimer) { clearTimeout(sleepTimer); sleepTimer = null; }
+    if (sleepTick) { clearInterval(sleepTick); sleepTick = null; }
+    if (mins > 0) {
+      sleepEnd = Date.now() + mins * 60000;
+      sleepTimer = setTimeout(function () { toast("Sleep timer — playback stopped."); stopListen(); }, mins * 60000);
+      sleepTick = setInterval(updateSleepLabel, 15000);
+      els.audioSleep.classList.add("timed");
+      toast("Sleep timer set for " + mins + " min.");
+    } else {
+      els.audioSleep.classList.remove("timed");
+      toast("Sleep timer off.");
+    }
+    updateSleepLabel();
+  }
+  function updateSleepLabel() {
+    if (!sleepTimer) { els.audioSleepLabel.textContent = ""; return; }
+    els.audioSleepLabel.textContent = Math.max(0, Math.ceil((sleepEnd - Date.now()) / 60000)) + "m";
+  }
+  function clearSleep() {
+    sleepIdx = 0;
+    if (sleepTimer) { clearTimeout(sleepTimer); sleepTimer = null; }
+    if (sleepTick) { clearInterval(sleepTick); sleepTick = null; }
+    els.audioSleep.classList.remove("timed");
+    els.audioSleepLabel.textContent = "";
+  }
+
+  // ---- Media Session + silent keep-alive (lock-screen / headphone controls) ----
+  // speechSynthesis isn't "media", so a tiny looping silent track keeps the
+  // media session active enough to show now-playing controls where supported.
+  var silentAudio = null;
+  function silentURL() {
+    try {
+      var sr = 8000, len = (sr * 0.5) | 0, buf = new ArrayBuffer(44 + len), dv = new DataView(buf);
+      function ws(o, s) { for (var i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); }
+      ws(0, "RIFF"); dv.setUint32(4, 36 + len, true); ws(8, "WAVE"); ws(12, "fmt ");
+      dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+      dv.setUint32(24, sr, true); dv.setUint32(28, sr, true); dv.setUint16(32, 1, true);
+      dv.setUint16(34, 8, true); ws(36, "data"); dv.setUint32(40, len, true);
+      for (var j = 0; j < len; j++) dv.setUint8(44 + j, 128);
+      return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+    } catch (e) { return null; }
+  }
+  function startKeepAlive() {
+    try {
+      if (!silentAudio) { var u = silentURL(); if (!u) return; silentAudio = new Audio(u); silentAudio.loop = true; silentAudio.volume = 0; }
+      var p = silentAudio.play(); if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
+  }
+  function stopKeepAlive() { try { if (silentAudio) silentAudio.pause(); } catch (e) {} }
+
+  function setupMediaSession() {
+    if (!("mediaSession" in navigator)) return;
+    var ms = navigator.mediaSession;
+    function h(a, fn) { try { ms.setActionHandler(a, fn); } catch (e) {} }
+    h("play", function () { if (au.on && au.paused) resumeListen(); else if (!au.on) startListen(); });
+    h("pause", function () { if (au.on && !au.paused) pauseListen(); });
+    h("stop", stopListen);
+    h("previoustrack", function () { audioJumpChapter(-1); });
+    h("nexttrack", function () { audioJumpChapter(1); });
+  }
+  function updateMediaMeta() {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      if (au.on && window.MediaMetadata) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: BIBLE[au.b].name + " " + (au.c + 1),
+          artist: "Holy Bible — World English Bible",
+          album: au.queue ? "Reading plan" : BIBLE[au.b].name,
+          artwork: [{ src: "icons/icon-512.png", sizes: "512x512", type: "image/png" }]
+        });
+      }
+      navigator.mediaSession.playbackState = !au.on ? "none" : au.paused ? "paused" : "playing";
+    } catch (e) {}
+  }
+  function audioJumpChapter(dir) {
+    if (!au.on) return;
+    if (au.queue) {
+      var nq = au.qi + dir;
+      if (nq < 0 || nq >= au.queue.length) return;
+      au.qi = nq; au.b = au.queue[nq][0]; au.c = au.queue[nq][1];
+    } else if (dir < 0) {
+      if (au.c > 0) au.c--; else if (au.b > 0) { au.b--; au.c = BIBLE[au.b].chapters.length - 1; } else return;
+    } else {
+      if (au.c < BIBLE[au.b].chapters.length - 1) au.c++; else if (au.b < BIBLE.length - 1) { au.b++; au.c = 0; } else return;
+    }
+    speechSynthesis.cancel();
+    pos = { b: au.b, c: au.c }; renderChapter(false);
+    au.chunks = buildAudioChunks(au.b, au.c); au.ci = 0; au.lastV = -1;
+    au.paused = false; setAudioPlayIcon(true);
+    updateMediaMeta();
+    speakChunk();
   }
 
   // iOS doesn't put the quality in the voice name — it's in the voiceURI.
@@ -1467,6 +1574,8 @@
   els.audioSlower.addEventListener("click", function () { audioNudge(-0.1); });
   els.audioFaster.addEventListener("click", function () { audioNudge(0.1); });
   els.audioVoiceBtn.addEventListener("click", openVoicePanel);
+  els.audioSleep.addEventListener("click", cycleSleep);
+  if (TTS) setupMediaSession();
   // Keep the engine alive if the OS pauses it when backgrounded briefly.
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden && au.on && !au.paused && TTS && !speechSynthesis.speaking) speakChunk();

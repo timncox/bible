@@ -468,10 +468,16 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .chapter .v.speaking .vn { color: var(--accent); }
 
 .audiobar {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: 8px 10px;
   background: var(--bg-elev);
   border-top: 1px solid var(--line);
+}
+.audio-btn { position: relative; }
+.audio-btn.timed { color: var(--accent); }
+.audio-sleep-label {
+  position: absolute; bottom: 1px; right: 1px;
+  font-size: 0.6rem; font-weight: 700; color: var(--accent);
 }
 .audio-info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
 .audio-ref { font-weight: 650; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
