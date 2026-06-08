@@ -23,7 +23,25 @@ module.exports = async (req, res) => {
   if (req.method !== "GET") return res.status(405).json({ error: "method" });
   if (!process.env.ESV_TOKEN) return res.status(500).json({ error: "ESV_TOKEN env var not set" });
 
-  const q = (req.query && req.query.q) || new URL(req.url, "http://x").searchParams.get("q");
+  const params = req.query || Object.fromEntries(new URL(req.url, "http://x").searchParams);
+
+  // Search mode: /api/esv?search=<query> → ESV search results.
+  if (params.search) {
+    const u = "https://api.esv.org/v3/passage/search/?" + new URLSearchParams({
+      q: params.search, "page-size": params["page-size"] || "100",
+    });
+    try {
+      const r = await fetch(u, { headers: { Authorization: "Token " + process.env.ESV_TOKEN } });
+      const body = await r.text();
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
+      return res.status(r.status).send(body);
+    } catch (e) {
+      return res.status(502).json({ error: "upstream", detail: String(e) });
+    }
+  }
+
+  const q = params.q;
   if (!q) return res.status(400).json({ error: "missing q" });
 
   const esv = "https://api.esv.org/v3/passage/text/?" + new URLSearchParams({

@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.17.0";
+  var APP_VERSION = "1.19.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -38,6 +38,73 @@
   var BIBLE = null;          // array of { name, abbrev, chapters: [ [verse,...] ] }
   var selectedVerse = null;  // {b,c,v} currently highlighted
 
+  // ----- Translations -----
+  // WEB is bundled offline. Everything else is online: ESV via /api/esv, the
+  // rest via API.Bible through /api/bible. Online chapters/search are fetched
+  // on demand and cached in onlineCache (keyed by translation id).
+  var TRANSLATIONS = [
+    { id: "web", name: "WEB", sub: "World English Bible", online: false },
+    { id: "esv", name: "ESV", sub: "English Standard Version", online: true, kind: "esv",
+      credit: "Scripture quotations are from the ESV® Bible, © 2001 Crossway. Used by permission." },
+    { id: "kjv", name: "KJV", sub: "King James Version", online: true, kind: "apibible",
+      bibleId: "de4e12af7f28f599-02", credit: "King James Version (public domain)." },
+    { id: "niv", name: "NIV", sub: "New International Version", online: true, kind: "apibible",
+      bibleId: "78a9f6124f344018-01",
+      credit: "Scripture taken from THE HOLY BIBLE, NEW INTERNATIONAL VERSION®, NIV®. Copyright © 1973, 1978, 1984, 2011 by Biblica, Inc.® Used by permission. All rights reserved worldwide." },
+    { id: "csb", name: "CSB", sub: "Christian Standard Bible", online: true, kind: "apibible",
+      bibleId: "a556c5305ee15c3f-01",
+      credit: "Christian Standard Bible®, Copyright © 2017 by Holman Bible Publishers. Used by permission." },
+    { id: "asv", name: "ASV", sub: "American Standard Version", online: true, kind: "apibible",
+      bibleId: "06125adad2d5898a-01", credit: "American Standard Version (public domain)." },
+    { id: "msg", name: "MSG", sub: "The Message", online: true, kind: "apibible",
+      bibleId: "6f11a7de016f942e-01",
+      credit: "Scripture taken from THE MESSAGE. Copyright © 1993, 2002, 2018 by Eugene H. Peterson. Used by permission of NavPress. All rights reserved." }
+  ];
+  function transById(id) {
+    for (var i = 0; i < TRANSLATIONS.length; i++) if (TRANSLATIONS[i].id === id) return TRANSLATIONS[i];
+    return TRANSLATIONS[0];
+  }
+  function curTrans() { return transById(settings.translation); }
+
+  // USFM book codes for API.Bible, in the app's 66-book Protestant order.
+  var USFM = [
+    "GEN","EXO","LEV","NUM","DEU","JOS","JDG","RUT","1SA","2SA","1KI","2KI","1CH","2CH",
+    "EZR","NEH","EST","JOB","PSA","PRO","ECC","SNG","ISA","JER","LAM","EZK","DAN","HOS",
+    "JOL","AMO","OBA","JON","MIC","NAM","HAB","ZEP","HAG","ZEC","MAL",
+    "MAT","MRK","LUK","JHN","ACT","ROM","1CO","2CO","GAL","EPH","PHP","COL","1TH","2TH",
+    "1TI","2TI","TIT","PHM","HEB","JAS","1PE","2PE","1JN","2JN","3JN","JUD","REV"
+  ];
+
+  // Online verse cache: key = "<translationId>|<b>|<c>" -> [verse, ...]
+  var onlineCache = {};
+  function chapterVerses(b, c) {
+    var t = curTrans();
+    if (!t.online) return BIBLE[b].chapters[c];
+    return onlineCache[t.id + "|" + b + "|" + c] || null;
+  }
+
+  // Map a reference string ("John 3:16", "Song of Solomon 4:15", "Psalm 23")
+  // back to {b,c,v}. Built lazily once BIBLE is loaded.
+  var BOOK_INDEX = null;
+  function normName(s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ""); }
+  function buildBookIndex() {
+    BOOK_INDEX = {};
+    for (var i = 0; i < BIBLE.length; i++) BOOK_INDEX[normName(BIBLE[i].name)] = i;
+    // common aliases the APIs may return
+    var alias = { "songofsolomon": "Song of Solomon", "songofsongs": "Song of Solomon",
+      "psalm": "Psalms", "psalms": "Psalms", "revelationofjohn": "Revelation",
+      "revelation": "Revelation", "revelations": "Revelation" };
+    for (var k in alias) { var idx = BOOK_INDEX[normName(alias[k])]; if (idx != null) BOOK_INDEX[k] = idx; }
+  }
+  function parseRef(ref) {
+    if (!BOOK_INDEX) buildBookIndex();
+    var m = String(ref).match(/^\s*(.+?)\s+(\d+)(?::(\d+))?/);
+    if (!m) return null;
+    var b = BOOK_INDEX[normName(m[1])];
+    if (b == null) return null;
+    return { b: b, c: (+m[2]) - 1, v: m[3] ? +m[3] : 1 };
+  }
+
   // ----- DOM helpers -----
   var $ = function (id) { return document.getElementById(id); };
   var els = {};
@@ -56,7 +123,7 @@
    "planReadings","planBar","planProgressLabel","planSpeedDay","planListenDay","fabPlan","fabDot",
    "studyPanel","studyRef","studyContent","studyCredit",
    "vaNoteLabel","vaSwatches","notePanel","noteRef","noteText","noteSave","noteDelete",
-   "noteList","noteCount","btnExport","btnImport","importFile","esvProxy","esvConfig"
+   "noteList","noteCount","btnExport","btnImport","importFile","esvProxy","esvConfig","transList"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -66,6 +133,7 @@
   // ======================================================================
   // Boot
   // ======================================================================
+  renderTranslationList();
   applySettings();
   els.appVersion.textContent = APP_VERSION;
 
@@ -104,14 +172,14 @@
     els.btnNext.disabled = (pos.b === BIBLE.length - 1 && pos.c === book.chapters.length - 1);
     if (scrollTop) els.reader.scrollTop = 0;
 
-    var esv = settings.translation === "esv";
-    var verses = esv ? esvCache[pos.b + "." + pos.c] : book.chapters[pos.c];
+    var t = curTrans(), online = t.online;
+    var verses = chapterVerses(pos.b, pos.c);
 
-    if (esv && !verses) {                      // need to fetch ESV for this chapter
+    if (online && !verses) {                   // need to fetch this chapter online
       els.chapter.className = "chapter layout-" + settings.layout;
-      els.chapter.innerHTML = '<h1>' + esc(book.name) + '</h1>' + esvStatusHtml(pos.b, pos.c);
+      els.chapter.innerHTML = '<h1>' + esc(book.name) + '</h1>' + onlineStatusHtml(pos.b, pos.c);
       save(LS.pos, pos);
-      fetchESV(pos.b, pos.c);
+      fetchOnline(pos.b, pos.c);
       return;
     }
 
@@ -119,7 +187,7 @@
     var pre = pos.b + "." + pos.c + ".";
 
     var html = '<h1>' + esc(book.name) + '</h1>' +
-               '<p class="ch-sub">Chapter ' + (pos.c + 1) + ' · ' + verses.length + ' verses' + (esv ? ' · ESV' : '') + '</p>' +
+               '<p class="ch-sub">Chapter ' + (pos.c + 1) + ' · ' + verses.length + ' verses' + (online ? ' · ' + esc(t.name) : '') + '</p>' +
                '<button class="ch-commentary" type="button">' +
                '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 0 1 2-2h7v16H6a2 2 0 0 0-2 2zM20 3v16a2 2 0 0 0-2 2h-5V3z"/></svg>' +
                'Commentary &amp; study</button>' +
@@ -134,7 +202,7 @@
               '<span class="vn">' + vn + '</span>' + esc(verses[i]) + mark + ' </span>';
     }
     html += '</p>';
-    if (esv) html += '<p class="esv-credit muted small">Scripture quotations are from the ESV® Bible, © 2001 Crossway. Used by permission.</p>';
+    if (online && t.credit) html += '<p class="esv-credit muted small">' + esc(t.credit) + '</p>';
     els.chapter.innerHTML = html;
     els.chapter.className = "chapter layout-" + settings.layout;
 
@@ -142,37 +210,51 @@
     save(LS.pos, pos);
   }
 
-  // ----- ESV (online, via proxy) -----
-  var esvCache = {};
-  // Default to the same-origin Vercel function (/api/esv); a custom proxy URL
-  // (e.g. a Cloudflare Worker, for the GitHub Pages host) overrides it.
+  // ----- Online translations (ESV via /api/esv, others via /api/bible) -----
+  // Default the ESV to the same-origin Vercel function; a custom proxy URL
+  // (e.g. a Cloudflare Worker on the GitHub Pages host) overrides it.
   function esvEndpoint() { return settings.esvProxy || "/api/esv"; }
-  function esvStatusHtml(b, c) {
-    return '<p class="study-loading">Loading ' + esc(BIBLE[b].name + " " + (c + 1)) + ' (ESV)…</p>';
+  function onlineUrl(t, b, c) {
+    if (t.kind === "esv") {
+      var base = esvEndpoint();
+      return base + (base.indexOf("?") > -1 ? "&" : "?") + "q=" + encodeURIComponent(BIBLE[b].name + " " + (c + 1));
+    }
+    return "/api/bible?bibleId=" + encodeURIComponent(t.bibleId) + "&chapter=" + encodeURIComponent(USFM[b] + "." + (c + 1));
   }
-  function fetchESV(b, c) {
-    var key = b + "." + c;
-    var q = BIBLE[b].name + " " + (c + 1);
-    var url = esvEndpoint();
-    fetch(url + (url.indexOf("?") > -1 ? "&" : "?") + "q=" + encodeURIComponent(q))
+  function onlineStatusHtml(b, c) {
+    return '<p class="study-loading">Loading ' + esc(BIBLE[b].name + " " + (c + 1)) + ' (' + esc(curTrans().name) + ')…</p>';
+  }
+  // Fetch a chapter for the active online translation. cb(ok, err) optional.
+  function fetchOnline(b, c, cb) {
+    var t = curTrans(), key = t.id + "|" + b + "|" + c;
+    fetch(onlineUrl(t, b, c))
       .then(function (r) { return r.json().catch(function () { throw new Error("HTTP " + r.status); }); })
       .then(function (data) {
         if (!data || !data.passages || !data.passages.length) throw new Error(data && data.error ? data.error : "no passage");
-        esvCache[key] = parseEsvPassage(data.passages[0]);
-        if (settings.translation === "esv" && pos.b === b && pos.c === c) renderChapter(false);
+        onlineCache[key] = parseEsvPassage(data.passages[0]);
+        if (cb) cb(true);
+        if (settings.translation === t.id && pos.b === b && pos.c === c) renderChapter(false);
       })
       .catch(function (err) {
-        if (settings.translation === "esv" && pos.b === b && pos.c === c) {
+        if (cb) cb(false, err);
+        if (settings.translation === t.id && pos.b === b && pos.c === c) {
           els.chapter.innerHTML = '<h1>' + esc(BIBLE[b].name) + '</h1>' +
-            '<p class="study-empty">Couldn’t load the ESV (' + esc(String(err.message || err)) + ').<br>' +
-            'On the hosted app this works automatically; if you self-host, add an ESV proxy URL in <strong>Settings → Translation</strong>. ' +
-            '<button class="esv-tofweb" type="button">Use offline WEB instead</button></p>';
+            '<p class="study-empty">Couldn’t load the ' + esc(t.name) + ' (' + esc(String(err.message || err)) + ').<br>' +
+            'Check your connection and try again. <button class="esv-tofweb" type="button">Use offline WEB instead</button></p>';
         }
       });
   }
-  // Turn "[1] In the beginning... [2] ..." into a verse-indexed array.
+  // Ensure a chapter is available (for audio etc.); cb(ok) when ready.
+  function ensureChapter(b, c, cb) {
+    var t = curTrans();
+    if (!t.online) { cb(true); return; }
+    if (onlineCache[t.id + "|" + b + "|" + c]) { cb(true); return; }
+    fetchOnline(b, c, function (ok) { cb(ok); });
+  }
+  // Turn "[1] In the beginning... [2] ..." into a verse-indexed array. Tolerates
+  // verse ranges like "[3-4]" (used by The Message) by keying off the first number.
   function parseEsvPassage(text) {
-    var out = [], re = /\[(\d+)\]\s*/g, m, last = null, lastIdx = 0;
+    var out = [], re = /\[(\d+)(?:[-–]\d+)?\]\s*/g, m, last = null, lastIdx = 0;
     while ((m = re.exec(text))) {
       if (last !== null) out[last - 1] = text.slice(lastIdx, m.index).replace(/\s+/g, " ").trim();
       last = +m[1]; lastIdx = re.lastIndex;
@@ -424,18 +506,20 @@
       copyText(text);
     }
   }
-  function translationTag() { return settings.translation === "esv" ? "ESV" : "WEB"; }
+  function translationTag() { return curTrans().name; }
   function displayVerseText(s) {
-    if (settings.translation === "esv") {
-      var v = esvCache[s.b + "." + s.c];
+    var t = curTrans();
+    if (t.online) {
+      var v = onlineCache[t.id + "|" + s.b + "|" + s.c];
       if (v && v[s.v - 1]) return v[s.v - 1];
     }
     return verseText(s);
   }
-  function setTranslation(t) {
-    settings.translation = t;
+  function setTranslation(tid) {
+    settings.translation = tid;
     save(LS.settings, settings);
     applySettings();
+    if (els.searchPanel && !els.searchPanel.hidden) runSearch(); // re-run search in new translation
     if (BIBLE) renderChapter(true);
   }
 
@@ -592,6 +676,7 @@
     var phrase = q.match(/^"(.+)"$/);
     var terms = phrase ? [phrase[1]] : q.split(/\s+/).filter(Boolean);
     var lowTerms = terms.map(function (t) { return t.toLowerCase(); });
+    if (curTrans().online) { runOnlineSearch(q, terms); return; }
     var range = scopeRange(), results = [], MAX = 300;
     for (var b = range[0]; b < range[1] && results.length < MAX; b++) {
       var chs = BIBLE[b].chapters;
@@ -619,6 +704,47 @@
     });
     els.searchResults.innerHTML = html || '<p class="search-empty">No verses in ' + esc(scopeLabel()) + ' match that.</p>';
     els.searchResults.scrollTop = 0;
+  }
+  // Online-translation search (ESV / API.Bible). Searches the whole Bible via
+  // the API, then applies the current scope client-side. searchSeq guards
+  // against stale responses when the query/translation/scope changes.
+  var searchSeq = 0;
+  function runOnlineSearch(q, terms) {
+    var t = curTrans(), token = ++searchSeq, range = scopeRange();
+    els.searchMeta.textContent = "Searching " + t.name + "…";
+    els.searchResults.innerHTML = "";
+    var url = t.kind === "esv"
+      ? (esvEndpoint() + (esvEndpoint().indexOf("?") > -1 ? "&" : "?") + "search=" + encodeURIComponent(q))
+      : ("/api/bible?bibleId=" + encodeURIComponent(t.bibleId) + "&search=" + encodeURIComponent(q));
+    fetch(url)
+      .then(function (r) { return r.json().catch(function () { throw new Error("HTTP " + r.status); }); })
+      .then(function (data) {
+        if (token !== searchSeq) return; // a newer search superseded this one
+        var raw = t.kind === "esv"
+          ? (data.results || []).map(function (x) { return { ref: x.reference, text: x.content }; })
+          : ((data.data && data.data.verses) || []).map(function (x) { return { ref: x.reference, text: x.text }; });
+        var results = [], MAX = 300;
+        for (var i = 0; i < raw.length && results.length < MAX; i++) {
+          var p = parseRef(raw[i].ref);
+          if (!p || p.b < range[0] || p.b >= range[1]) continue; // scope filter
+          results.push({ b: p.b, c: p.c, v: p.v, text: String(raw[i].text || "").replace(/\s+/g, " ").trim() });
+        }
+        els.searchMeta.textContent = results.length
+          ? (results.length + (results.length >= MAX ? "+" : "") + " match" + (results.length === 1 ? "" : "es") + " in " + scopeLabel() + " · " + t.name)
+          : "No matches in " + scopeLabel() + " (" + t.name + ").";
+        var html = "";
+        results.forEach(function (r) {
+          html += '<div class="search-result" data-b="' + r.b + '" data-c="' + r.c + '" data-v="' + r.v + '">' +
+                  '<div class="sr-ref">' + esc(BIBLE[r.b].name + " " + (r.c + 1) + ":" + r.v) + '</div>' +
+                  '<div class="sr-text">' + highlightTerms(r.text, terms) + '</div></div>';
+        });
+        els.searchResults.innerHTML = html || '<p class="search-empty">No verses in ' + esc(scopeLabel()) + ' match that in the ' + esc(t.name) + '.</p>';
+        els.searchResults.scrollTop = 0;
+      })
+      .catch(function (err) {
+        if (token !== searchSeq) return;
+        els.searchMeta.textContent = "Search failed (" + esc(String(err.message || err)) + "). Check your connection.";
+      });
   }
   function highlightTerms(text, terms) {
     var escd = terms.map(function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).filter(Boolean);
@@ -696,9 +822,17 @@
       if (BIBLE) renderChapter(false);
     });
   });
-  // translation
-  els.settingsPanel.querySelectorAll("[data-translation]").forEach(function (btn) {
-    btn.addEventListener("click", function () { setTranslation(btn.getAttribute("data-translation")); });
+  // translation — buttons rendered from TRANSLATIONS; one delegated handler.
+  function renderTranslationList() {
+    if (!els.transList) return;
+    els.transList.innerHTML = TRANSLATIONS.map(function (t) {
+      return '<button class="seg-btn" data-translation="' + t.id + '" title="' + esc(t.sub) + '">' +
+        esc(t.name) + (t.online ? "" : " <span class=\"muted\">·offline</span>") + '</button>';
+    }).join("");
+  }
+  els.transList.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-translation]");
+    if (btn) setTranslation(btn.getAttribute("data-translation"));
   });
   els.esvProxy.addEventListener("change", function () {
     settings.esvProxy = els.esvProxy.value.trim().replace(/\/+$/, "");
@@ -1492,7 +1626,7 @@
   // Build short speakable chunks (one per sentence) for a chapter, tagged with
   // the verse they belong to so we can highlight as we go.
   function buildAudioChunks(b, c) {
-    var verses = BIBLE[b].chapters[c];
+    var verses = chapterVerses(b, c) || [];
     var out = [];
     for (var v = 0; v < verses.length; v++) {
       // Split into sentences without regex lookbehind (older Safari safe).
@@ -1523,13 +1657,6 @@
       au.queue = null;
       au.b = pos.b; au.c = pos.c;
     }
-    au.chunks = buildAudioChunks(au.b, au.c);
-    au.ci = 0; au.lastV = -1;
-    if (!au.queue) {
-      var startV = (typeof fromVerse === "number") ? fromVerse
-        : (selectedVerse && selectedVerse.b === au.b && selectedVerse.c === au.c ? selectedVerse.v - 1 : 0);
-      for (var k = 0; k < au.chunks.length; k++) { if (au.chunks[k].v === startV) { au.ci = k; break; } }
-    }
     au.on = true; au.paused = false;
     els.audioBar.hidden = false;
     setAudioPlayIcon(true);
@@ -1537,7 +1664,25 @@
     updateFab();
     startKeepAlive();
     updateMediaMeta();
-    speakChunk();
+    var startV = au.queue ? 0
+      : (typeof fromVerse === "number") ? fromVerse
+      : (selectedVerse && selectedVerse.b === au.b && selectedVerse.c === au.c ? selectedVerse.v - 1 : 0);
+    beginChapterAudio(startV);
+  }
+  // Make sure the current chapter's text is loaded (online translations fetch
+  // on demand), then build chunks and start speaking.
+  function beginChapterAudio(startV) {
+    var b = au.b, c = au.c;
+    if (curTrans().online && !chapterVerses(b, c)) els.audioRef.textContent = "Loading " + curTrans().name + "…";
+    ensureChapter(b, c, function (ok) {
+      if (!au.on || au.b !== b || au.c !== c) return; // stopped or moved on while fetching
+      if (!ok) { toast("Couldn’t load " + curTrans().name + " audio for this chapter."); stopListen(); return; }
+      au.chunks = buildAudioChunks(b, c);
+      au.ci = 0; au.lastV = -1;
+      if (startV) { for (var k = 0; k < au.chunks.length; k++) { if (au.chunks[k].v === startV) { au.ci = k; break; } } }
+      updateMediaMeta();
+      speakChunk();
+    });
   }
   function listenChapters(chapters) {
     if (!chapters || !chapters.length) return;
@@ -1574,10 +1719,7 @@
     else { stopListen(); toast("Finished the Bible."); return; }
     pos = { b: au.b, c: au.c };
     renderChapter(false);
-    au.chunks = buildAudioChunks(au.b, au.c);
-    au.ci = 0; au.lastV = -1;
-    updateMediaMeta();
-    speakChunk();
+    beginChapterAudio(0);
   }
 
   function highlightVerse(vIdx) {
@@ -1724,10 +1866,8 @@
     }
     speechSynthesis.cancel();
     pos = { b: au.b, c: au.c }; renderChapter(false);
-    au.chunks = buildAudioChunks(au.b, au.c); au.ci = 0; au.lastV = -1;
     au.paused = false; setAudioPlayIcon(true);
-    updateMediaMeta();
-    speakChunk();
+    beginChapterAudio(0);
   }
 
   // iOS doesn't put the quality in the voice name — it's in the voiceURI.
