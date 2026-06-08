@@ -47,6 +47,10 @@ network required after the first visit.
   tap any word to open its Hebrew/Greek lexicon entry, then **"find every verse
   that uses it"** for a full Strong's concordance.
   All bundled for offline use (the interlinear data downloads on first use).
+- **Highlights & notes** — color‑highlight verses (5 colors) and attach personal
+  notes; both show inline and are listed in Settings, saved on‑device.
+- **Backup & restore** — export all your bookmarks, notes, highlights, and reading
+  progress to a JSON file, and import it on any device.
 - **Bookmarks** — tap any verse to bookmark, copy, or share it. Saved on‑device.
 - **Themes** — light, sepia, and dark, plus adjustable text size.
 - All preferences, bookmarks, and your last reading position are stored locally

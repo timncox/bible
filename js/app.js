@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.15.0";
+  var APP_VERSION = "1.16.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -14,7 +14,9 @@
     pos: "bible.pos",
     settings: "bible.settings",
     bookmarks: "bible.bookmarks",
-    plan: "bible.plan"
+    plan: "bible.plan",
+    highlights: "bible.highlights",
+    notes: "bible.notes"
   };
   function load(key, fallback) {
     try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -30,6 +32,8 @@
   );
   var pos = load(LS.pos, { b: 0, c: 0 });
   var bookmarks = load(LS.bookmarks, []);
+  var highlights = load(LS.highlights, {});  // { "b.c.v": colorIdx }
+  var notes = load(LS.notes, {});            // { "b.c.v": "text" }
 
   var BIBLE = null;          // array of { name, abbrev, chapters: [ [verse,...] ] }
   var selectedVerse = null;  // {b,c,v} currently highlighted
@@ -50,7 +54,9 @@
    "audioRate","audioVoiceBtn","audioStop","audioSleep","audioSleepLabel","voicePanel","voiceList","voiceFilter","voiceNote",
    "btnPlan","planLaunchSub","planPanel","planPrev","planNext","planToday","planDayLabel","planDayNum",
    "planReadings","planBar","planProgressLabel","planSpeedDay","planListenDay","fabPlan","fabDot",
-   "studyPanel","studyRef","studyContent","studyCredit"
+   "studyPanel","studyRef","studyContent","studyCredit",
+   "vaNoteLabel","vaSwatches","notePanel","noteRef","noteText","noteSave","noteDelete",
+   "noteList","noteCount","btnExport","btnImport","importFile"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -97,6 +103,7 @@
     document.title = ref + " — Holy Bible";
 
     var bmSet = bookmarkSetForChapter(pos.b, pos.c);
+    var pre = pos.b + "." + pos.c + ".";
 
     var html = '<h1>' + esc(book.name) + '</h1>' +
                '<p class="ch-sub">Chapter ' + (pos.c + 1) + ' · ' + verses.length + ' verses</p>' +
@@ -105,10 +112,12 @@
                'Commentary &amp; study</button>' +
                '<p class="verses">';
     for (var i = 0; i < verses.length; i++) {
-      var vn = i + 1;
+      var vn = i + 1, vkey = pre + vn;
       var cls = "v" + (bmSet[vn] ? " bookmarked" : "");
+      if (highlights[vkey] != null) cls += " hl" + highlights[vkey];
+      var mark = notes[vkey] != null ? '<span class="note-mark" aria-label="Has a note">●</span>' : "";
       html += '<span class="' + cls + '" data-v="' + vn + '">' +
-              '<span class="vn">' + vn + '</span>' + esc(verses[i]) + ' </span>';
+              '<span class="vn">' + vn + '</span>' + esc(verses[i]) + mark + ' </span>';
     }
     html += '</p>';
     els.chapter.innerHTML = html;
@@ -276,9 +285,12 @@
   function verseRef(s) { return BIBLE[s.b].name + " " + (s.c + 1) + ":" + s.v; }
   function verseText(s) { return BIBLE[s.b].chapters[s.c][s.v - 1]; }
 
+  function vKey(s) { return s.b + "." + s.c + "." + s.v; }
   function showVerseActions() {
     els.verseActionsRef.textContent = verseRef(selectedVerse);
     els.vaBookmarkLabel.textContent = isBookmarked(selectedVerse) ? "Remove" : "Bookmark";
+    els.vaNoteLabel.textContent = (notes[vKey(selectedVerse)] != null) ? "Edit note" : "Note";
+    els.vaSwatches.hidden = true;
     els.verseActions.hidden = false;
   }
 
@@ -288,10 +300,59 @@
     var act = btn.getAttribute("data-act");
     var s = selectedVerse;
     if (act === "study") { openStudy(s); }
+    else if (act === "highlight") { els.vaSwatches.hidden = !els.vaSwatches.hidden; }
+    else if (act === "note") { openNoteEditor(s); }
     else if (act === "bookmark") { toggleBookmark(s); showVerseActions(); }
     else if (act === "copy") { copyText(verseRef(s) + " — " + verseText(s) + " (WEB)"); }
     else if (act === "share") { shareVerse(s); }
     else if (act === "close") { clearVerseSelection(); }
+  });
+  els.vaSwatches.addEventListener("click", function (e) {
+    var sw = e.target.closest("[data-hl]");
+    if (!sw || !selectedVerse) return;
+    setHighlight(selectedVerse, +sw.getAttribute("data-hl"));
+    els.vaSwatches.hidden = true;
+  });
+
+  function setHighlight(s, idx) {
+    var k = vKey(s);
+    if (idx < 0) { delete highlights[k]; toast("Highlight removed"); }
+    else { highlights[k] = idx; toast("Highlighted"); }
+    save(LS.highlights, highlights);
+    // update the verse styling in place without losing the selection
+    var node = els.chapter.querySelector('.v[data-v="' + s.v + '"]');
+    if (node && s.b === pos.b && s.c === pos.c) {
+      node.className = node.className.replace(/\s*hl\d/g, "");
+      if (idx >= 0) node.classList.add("hl" + idx);
+    }
+  }
+
+  // ---- Per-verse notes ----
+  var noteVerse = null;
+  function openNoteEditor(s) {
+    noteVerse = { b: s.b, c: s.c, v: s.v };
+    els.noteRef.textContent = verseRef(noteVerse);
+    els.noteText.value = notes[vKey(noteVerse)] || "";
+    els.noteDelete.style.display = (notes[vKey(noteVerse)] != null) ? "" : "none";
+    clearVerseSelection();
+    openPanel(els.notePanel);
+    setTimeout(function () { els.noteText.focus(); }, 80);
+  }
+  els.noteSave.addEventListener("click", function () {
+    if (!noteVerse) return;
+    var t = els.noteText.value.trim(), k = vKey(noteVerse);
+    if (t) { notes[k] = t; toast("Note saved"); } else { delete notes[k]; }
+    save(LS.notes, notes);
+    closePanels();
+    if (BIBLE) renderChapter(false);
+  });
+  els.noteDelete.addEventListener("click", function () {
+    if (!noteVerse) return;
+    delete notes[vKey(noteVerse)];
+    save(LS.notes, notes);
+    closePanels();
+    if (BIBLE) renderChapter(false);
+    toast("Note deleted");
   });
 
   function copyText(text) {
@@ -370,6 +431,41 @@
     closePanels();
     goChapter(m.b, m.c);
     setTimeout(function () { flashVerse(m.v); }, 60);
+  });
+
+  // ---- Notes list in Settings ----
+  function noteKeys() {
+    return Object.keys(notes).sort(function (a, b) {
+      var pa = a.split(".").map(Number), pb = b.split(".").map(Number);
+      return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2];
+    });
+  }
+  function renderNoteList() {
+    var keys = noteKeys();
+    els.noteCount.textContent = keys.length ? keys.length + " saved" : "";
+    if (!keys.length) { els.noteList.innerHTML = '<li class="bookmark-empty">Tap a verse → Note to write one.</li>'; return; }
+    els.noteList.innerHTML = keys.map(function (k) {
+      var p = k.split(".").map(Number), ref = BIBLE[p[0]].name + " " + (p[1] + 1) + ":" + p[2];
+      return '<li data-k="' + k + '"><span class="bm-ref">' + esc(ref) + '</span>' +
+        '<span class="bm-text">' + esc(notes[k]) + '</span>' +
+        '<span class="bm-del" data-delk="' + k + '" aria-label="Delete"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></span></li>';
+    }).join("");
+  }
+  els.noteList.addEventListener("click", function (e) {
+    var del = e.target.closest("[data-delk]");
+    if (del) {
+      e.stopPropagation();
+      delete notes[del.getAttribute("data-delk")];
+      save(LS.notes, notes); renderNoteList();
+      if (BIBLE) renderChapter(false);
+      return;
+    }
+    var li = e.target.closest("li[data-k]");
+    if (!li) return;
+    var p = li.getAttribute("data-k").split(".").map(Number);
+    closePanels();
+    goChapter(p[0], p[1]);
+    setTimeout(function () { flashVerse(p[2]); }, 60);
   });
   function flashVerse(vn) {
     var node = els.chapter.querySelector('.v[data-v="' + vn + '"]');
@@ -484,7 +580,40 @@
   // ======================================================================
   els.btnMenu.addEventListener("click", function () {
     renderBookmarkList();
+    renderNoteList();
     openPanel(els.settingsPanel);
+  });
+
+  // ---- Backup & restore ----
+  els.btnExport.addEventListener("click", function () {
+    var data = {};
+    for (var name in LS) { var v = localStorage.getItem(LS[name]); if (v != null) data[LS[name]] = v; }
+    var blob = new Blob([JSON.stringify({ app: "holy-bible-pwa", version: APP_VERSION, exported: new Date().toISOString(), data: data }, null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "bible-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 0);
+    toast("Backup exported");
+  });
+  els.btnImport.addEventListener("click", function () { els.importFile.click(); });
+  els.importFile.addEventListener("change", function () {
+    var file = els.importFile.files && els.importFile.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var parsed;
+      try { parsed = JSON.parse(reader.result); } catch (e) { toast("That file isn’t a valid backup."); return; }
+      var data = parsed && parsed.data;
+      if (!data || typeof data !== "object") { toast("That file isn’t a valid backup."); return; }
+      if (!window.confirm("Restore this backup? It will replace your current bookmarks, notes, highlights, and reading progress on this device.")) return;
+      try {
+        for (var k in data) { if (k.indexOf("bible.") === 0) localStorage.setItem(k, data[k]); }
+        location.reload();
+      } catch (e) { toast("Couldn’t restore the backup."); }
+    };
+    reader.readAsText(file);
+    els.importFile.value = "";
   });
 
   // theme

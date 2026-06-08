@@ -109,10 +109,20 @@
     <span id="verseActionsRef" class="va-ref"></span>
     <div class="va-buttons">
       <button data-act="study" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h7v16H6a2 2 0 0 0-2 2zM20 3v16a2 2 0 0 0-2 2h-5V3z"/></svg><span>Study</span></button>
+      <button data-act="highlight" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M14 4l6 6-9 9H5v-6z"/></svg><span>Highlight</span></button>
+      <button data-act="note" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v12l-4 4H5z"/><path d="M15 20v-4h4"/></svg><span id="vaNoteLabel">Note</span></button>
       <button data-act="bookmark" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span id="vaBookmarkLabel">Bookmark</span></button>
       <button data-act="copy" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Copy</span></button>
       <button data-act="share" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg><span>Share</span></button>
       <button data-act="close" class="va-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span>Close</span></button>
+    </div>
+    <div id="vaSwatches" class="va-swatches" hidden>
+      <button class="sw" data-hl="0" style="background:#ffe680" aria-label="Yellow"></button>
+      <button class="sw" data-hl="1" style="background:#b6f0b6" aria-label="Green"></button>
+      <button class="sw" data-hl="2" style="background:#a9d6ff" aria-label="Blue"></button>
+      <button class="sw" data-hl="3" style="background:#ffc2dd" aria-label="Pink"></button>
+      <button class="sw" data-hl="4" style="background:#ffd1a6" aria-label="Orange"></button>
+      <button class="sw sw-none" data-hl="-1" aria-label="Remove highlight"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
   </div>
 
@@ -204,6 +214,24 @@
       </section>
 
       <section class="setting">
+        <div class="setting-head-row">
+          <label>Notes</label>
+          <span id="noteCount" class="muted"></span>
+        </div>
+        <ul id="noteList" class="bookmark-list"></ul>
+      </section>
+
+      <section class="setting">
+        <label>Backup &amp; restore</label>
+        <p class="muted small">Your bookmarks, notes, highlights, and reading progress live only on this device. Export a backup to keep them safe or move to another device.</p>
+        <div class="backup-row">
+          <button id="btnExport" class="pillbtn">Export backup</button>
+          <button id="btnImport" class="pillbtn">Import backup</button>
+          <input id="importFile" type="file" accept="application/json,.json" hidden />
+        </div>
+      </section>
+
+      <section class="setting">
         <button id="btnInstall" class="primarybtn" hidden>Install app on device</button>
         <p id="installHint" class="muted small"></p>
       </section>
@@ -234,6 +262,21 @@
     </div>
     <div id="studyContent" class="study-content"></div>
     <p id="studyCredit" class="study-credit muted small"></p>
+  </div>
+
+  <!-- Note editor -->
+  <div id="notePanel" class="panel bottom" hidden aria-label="Verse note">
+    <div class="panel-head">
+      <h2 id="noteRef">Note</h2>
+      <button class="iconbtn close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="note-body">
+      <textarea id="noteText" class="note-text" placeholder="Write a note for this verse…" rows="6"></textarea>
+      <div class="note-actions">
+        <button id="noteDelete" class="pillbtn">Delete</button>
+        <button id="noteSave" class="primarybtn">Save note</button>
+      </div>
+    </div>
   </div>
 
   <!-- M'Cheyne reading plan -->
