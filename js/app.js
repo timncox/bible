@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.12.5";
+  var APP_VERSION = "1.13.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -913,7 +913,53 @@
     if (e.p) head += ' <span class="lex-pron">/' + esc(e.p) + '/</span>';
     var body = '<div class="lex-def">' + esc(e.d) + '</div>';
     if (e.k) body += '<div class="lex-kjv"><b>KJV:</b> ' + esc(e.k) + '</div>';
+    body += '<button class="lex-conc" data-s="' + esc(num) + '">Find every verse that uses ' + esc(num) + ' &rsaquo;</button>';
     return '<div class="lex-entry"><div class="lex-head">' + head + '</div>' + body + '</div>';
+  }
+
+  // ---- Strong's concordance (computed live from the tagged KJV) ----
+  function findOccurrences(num) {
+    var tag = "[" + num + "]", out = [];
+    for (var b = 0; b < kjvTagged.length; b++) {
+      var bk = kjvTagged[b]; if (!bk) continue;
+      for (var c = 0; c < bk.length; c++) {
+        var vs = bk[c];
+        for (var v = 0; v < vs.length; v++) {
+          if (vs[v].indexOf(tag) !== -1) out.push([b, c, v + 1, vs[v]]);
+        }
+      }
+    }
+    return out;
+  }
+  function kjvVerseHighlight(s, num) {
+    var tag = "[" + num + "]";
+    return s.split(" ").map(function (tok) {
+      var m = tok.match(/^(.*?)((?:\[[GH]\d+\])+)$/);
+      var word = m ? m[1] : tok.replace(/\[[GH]\d+\]/g, "");
+      var hit = m && m[2].indexOf(tag) !== -1;
+      return hit ? "<mark>" + esc(word) + "</mark>" : esc(word);
+    }).join(" ");
+  }
+  function showConcordance(num) {
+    setStudyTab("lex");
+    els.studyCredit.textContent = "Concordance from the KJV (Strong’s, public domain)";
+    if (!kjvTagged) {
+      els.studyContent.innerHTML = '<p class="study-loading">Loading concordance…</p>';
+      loadInterlinear(function () { showConcordance(num); });
+      return;
+    }
+    var hits = findOccurrences(num), MAX = 300;
+    var e = lexData && lexData[num];
+    var title = num + (e && e.l ? " · " + e.l : "") + " — " + hits.length + " occurrence" + (hits.length === 1 ? "" : "s");
+    var html = '<button class="lex-back" data-s="' + esc(num) + '">&lsaquo; Back to definition</button>' +
+               '<p class="dict-hint">' + esc(title) + (hits.length > MAX ? " (showing first " + MAX + ")" : "") + "</p>";
+    hits.slice(0, MAX).forEach(function (h) {
+      html += '<button class="xref" data-b="' + h[0] + '" data-c="' + h[1] + '" data-v="' + h[2] + '">' +
+        '<div class="xref-ref">' + esc(BIBLE[h[0]].name + " " + (h[1] + 1) + ":" + h[2]) + ' <span class="muted">(KJV)</span></div>' +
+        '<div class="xref-text">' + kjvVerseHighlight(h[3], num) + '</div></button>';
+    });
+    els.studyContent.innerHTML = html;
+    els.studyContent.scrollTop = 0;
   }
   function searchLexicon(q) {
     q = q.trim();
@@ -965,6 +1011,10 @@
     });
   });
   els.studyContent.addEventListener("click", function (e) {
+    var conc = e.target.closest(".lex-conc");
+    if (conc) { showConcordance(conc.getAttribute("data-s")); return; }
+    var back = e.target.closest(".lex-back");
+    if (back) { lexQuery = back.getAttribute("data-s"); setStudyTab("lex"); renderLexicon(); return; }
     var iw = e.target.closest(".iw");
     if (iw) {                              // interlinear word -> its Strong's entry
       lexQuery = iw.getAttribute("data-s");
