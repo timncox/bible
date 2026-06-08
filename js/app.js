@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.12.4";
+  var APP_VERSION = "1.12.5";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -1358,7 +1358,7 @@
       var note = au.voices.length + " English voice" + (au.voices.length === 1 ? "" : "s") + ".";
       note += enhancedCount
         ? " " + enhancedCount + " marked Enhanced — those are the high-quality ones."
-        : (isIOS() ? " Tip: download an “Enhanced” voice in Settings → Accessibility → Spoken Content → Voices, then reload this page." : "");
+        : (isIOS() ? " On iPhone/iPad, web apps can only use the built-in voices — Enhanced/Premium voices you download in Settings aren’t available to web apps (an Apple limitation)." : "");
       els.voiceNote.textContent = note;
     }
   }
