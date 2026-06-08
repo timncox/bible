@@ -25,9 +25,11 @@ network required after the first visit.
   **sleep timer**, and **lock‑screen / headphone controls** (where the platform
   supports it).
 - **Translations** — the **World English Bible** is bundled for offline reading.
-  You can also add the **ESV** (online) by deploying the tiny Cloudflare Worker in
-  [`proxy/`](./proxy) and pasting its URL in Settings → Translation. (ESV reads
-  online only; audio/search/study use the offline WEB text. ESV® © Crossway.)
+  You can also add the **ESV** (online): one‑click‑deploy the proxy Worker, set
+  your token as its secret, and paste its URL in Settings → Translation.
+  [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/timncox/bible)
+  (See [`proxy/`](./proxy). ESV reads online only; audio/search/study use the
+  offline WEB text. ESV® © Crossway.)
 - **Read** in a clean, distraction‑free view with paragraph or verse‑by‑verse layout.
 - **Navigate** by book → chapter, with prev/next buttons, swipe gestures, and arrow keys.
 - **Search** the entire Bible instantly, with highlighted matches. Filter by

@@ -7,6 +7,20 @@ stay secret. This tiny Cloudflare Worker fixes both: it holds the token as a
 **The token is never stored in this repo** — only as a Worker secret you set in
 the Cloudflare dashboard.
 
+## One‑click deploy
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/timncox/bible)
+
+Click it, authorize GitHub + Cloudflare, and it deploys the Worker (using the
+root `wrangler.toml`). **Then you must finish two steps:**
+
+1. Worker → **Settings → Variables and Secrets** → add a **Secret** `ESV_TOKEN`
+   = your token from <https://api.esv.org/account/>. *(Until you do, the proxy
+   returns `{"error":"ESV_TOKEN secret not set"}`.)*
+2. Copy the Worker URL and paste it into the app: **Settings → Translation → ESV**.
+
+Prefer to do it by hand? Follow the manual steps below.
+
 ## Deploy (free, ~3 minutes, no credit card)
 
 1. **dash.cloudflare.com → Workers & Pages → Create → Create Worker.**
