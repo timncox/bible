@@ -111,7 +111,7 @@
       els.chapter.className = "chapter layout-" + settings.layout;
       els.chapter.innerHTML = '<h1>' + esc(book.name) + '</h1>' + esvStatusHtml(pos.b, pos.c);
       save(LS.pos, pos);
-      if (settings.esvProxy) fetchESV(pos.b, pos.c);
+      fetchESV(pos.b, pos.c);
       return;
     }
 
@@ -144,18 +144,18 @@
 
   // ----- ESV (online, via proxy) -----
   var esvCache = {};
+  // Default to the same-origin Vercel function (/api/esv); a custom proxy URL
+  // (e.g. a Cloudflare Worker, for the GitHub Pages host) overrides it.
+  function esvEndpoint() { return settings.esvProxy || "/api/esv"; }
   function esvStatusHtml(b, c) {
-    if (!settings.esvProxy) {
-      return '<p class="study-empty">Add your ESV proxy URL in <strong>Settings → Translation</strong> to read the ESV. ' +
-        '<br><button class="esv-tofweb" type="button">Use offline WEB instead</button></p>';
-    }
     return '<p class="study-loading">Loading ' + esc(BIBLE[b].name + " " + (c + 1)) + ' (ESV)…</p>';
   }
   function fetchESV(b, c) {
     var key = b + "." + c;
     var q = BIBLE[b].name + " " + (c + 1);
-    fetch(settings.esvProxy + (settings.esvProxy.indexOf("?") > -1 ? "&" : "?") + "q=" + encodeURIComponent(q))
-      .then(function (r) { return r.json(); })
+    var url = esvEndpoint();
+    fetch(url + (url.indexOf("?") > -1 ? "&" : "?") + "q=" + encodeURIComponent(q))
+      .then(function (r) { return r.json().catch(function () { throw new Error("HTTP " + r.status); }); })
       .then(function (data) {
         if (!data || !data.passages || !data.passages.length) throw new Error(data && data.error ? data.error : "no passage");
         esvCache[key] = parseEsvPassage(data.passages[0]);
@@ -165,7 +165,8 @@
         if (settings.translation === "esv" && pos.b === b && pos.c === c) {
           els.chapter.innerHTML = '<h1>' + esc(BIBLE[b].name) + '</h1>' +
             '<p class="study-empty">Couldn’t load the ESV (' + esc(String(err.message || err)) + ').<br>' +
-            'Check your proxy URL and connection. <button class="esv-tofweb" type="button">Use offline WEB instead</button></p>';
+            'On the hosted app this works automatically; if you self-host, add an ESV proxy URL in <strong>Settings → Translation</strong>. ' +
+            '<button class="esv-tofweb" type="button">Use offline WEB instead</button></p>';
         }
       });
   }
