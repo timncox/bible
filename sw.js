@@ -1,5 +1,5 @@
 /* Service worker — precaches the app shell + full Bible text for offline use. */
-var CACHE = "bible-offline-v1.21.0";
+var CACHE = "bible-offline-v1.23.0";
 
 // NB: do NOT precache "index.html". On Vercel, cleanUrls 308-redirects
 // /index.html -> /, so caching it stores a *redirected* response, and Safari

@@ -1,0 +1,8 @@
+{
+  "name": "bible-pwa",
+  "private": true,
+  "description": "Serverless deps for the Bible PWA's /api functions (the app itself is static, no build step).",
+  "dependencies": {
+    "@vercel/blob": "^2.4.0"
+  }
+}
