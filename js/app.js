@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.22.0";
+  var APP_VERSION = "1.24.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -16,7 +16,8 @@
     bookmarks: "bible.bookmarks",
     plan: "bible.plan",
     highlights: "bible.highlights",
-    notes: "bible.notes"
+    notes: "bible.notes",
+    syncmeta: "bible.syncmeta"
   };
   function load(key, fallback) {
     try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -36,6 +37,17 @@
   var bookmarks = load(LS.bookmarks, []);
   var highlights = load(LS.highlights, {});  // { "b.c.v": colorIdx }
   var notes = load(LS.notes, {});            // { "b.c.v": "text" }
+
+  // Sync metadata for last-write-wins delete propagation. mt = last-modified
+  // time per item; tomb = deletion time per item. col is "h"|"n"|"b".
+  // Runtime sync state (declared before boot so renderSyncUI is safe at startup).
+  var sync = { docId: null, key: null, status: "off", timer: null, applying: false };
+  var syncMeta = load(LS.syncmeta, null) || { mt: { h: {}, n: {}, b: {} }, tomb: { h: {}, n: {}, b: {} } };
+  if (!syncMeta.mt) syncMeta.mt = { h: {}, n: {}, b: {} };
+  if (!syncMeta.tomb) syncMeta.tomb = { h: {}, n: {}, b: {} };
+  function saveMeta() { try { localStorage.setItem(LS.syncmeta, JSON.stringify(syncMeta)); } catch (e) {} }
+  function touchItem(col, key) { syncMeta.mt[col][key] = Date.now(); delete syncMeta.tomb[col][key]; saveMeta(); }
+  function tombItem(col, key) { syncMeta.tomb[col][key] = Date.now(); delete syncMeta.mt[col][key]; saveMeta(); }
 
   var BIBLE = null;          // array of { name, abbrev, chapters: [ [verse,...] ] }
   var selectedVerse = null;  // {b,c,v} currently highlighted
@@ -459,8 +471,8 @@
 
   function setHighlight(s, idx) {
     var k = vKey(s);
-    if (idx < 0) { delete highlights[k]; toast("Highlight removed"); }
-    else { highlights[k] = idx; toast("Highlighted"); }
+    if (idx < 0) { delete highlights[k]; tombItem("h", k); toast("Highlight removed"); }
+    else { highlights[k] = idx; touchItem("h", k); toast("Highlighted"); }
     save(LS.highlights, highlights);
     // update the verse styling in place without losing the selection
     var node = els.chapter.querySelector('.v[data-v="' + s.v + '"]');
@@ -484,14 +496,15 @@
   els.noteSave.addEventListener("click", function () {
     if (!noteVerse) return;
     var t = els.noteText.value.trim(), k = vKey(noteVerse);
-    if (t) { notes[k] = t; toast("Note saved"); } else { delete notes[k]; }
+    if (t) { notes[k] = t; touchItem("n", k); toast("Note saved"); } else { delete notes[k]; tombItem("n", k); }
     save(LS.notes, notes);
     closePanels();
     if (BIBLE) renderChapter(false);
   });
   els.noteDelete.addEventListener("click", function () {
     if (!noteVerse) return;
-    delete notes[vKey(noteVerse)];
+    var dk = vKey(noteVerse);
+    delete notes[dk]; tombItem("n", dk);
     save(LS.notes, notes);
     closePanels();
     if (BIBLE) renderChapter(false);
@@ -656,8 +669,9 @@
   // Notes + highlights + bookmarks sync across devices via a secret phrase.
   // The phrase derives a docId (what the server stores under) and a separate
   // AES-GCM key (never sent). The server only sees a hash and ciphertext.
+  // (the `sync` state object is declared near the top — it must exist before
+  // boot's applySettings -> renderSyncUI runs when sync is already enabled.)
   // ======================================================================
-  var sync = { docId: null, key: null, status: "off", timer: null, applying: false };
   function syncOn() { return !!settings.syncPhrase && !!(window.crypto && crypto.subtle); }
 
   function b64enc(bytes) { var s = "", i; for (i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); }
@@ -693,22 +707,61 @@
     return deriveSync(settings.syncPhrase).then(function (d) { sync.docId = d.docId; sync.key = d.key; return true; }, function () { return false; });
   }
   function setSyncStatus(s) { sync.status = s; renderSyncUI(); }
-  // Union merge: add anything the remote has that we don't. Local wins on
-  // conflicts; deletions don't propagate (acceptable for one user's devices).
+  // Backfill mt for items that predate tombstone tracking, so they aren't
+  // wrongly deleted by older tombstones (baseline 1 = "very old but present").
+  function ensureMeta() {
+    var k;
+    for (k in highlights) if (!syncMeta.mt.h[k] && !syncMeta.tomb.h[k]) syncMeta.mt.h[k] = 1;
+    for (k in notes) if (!syncMeta.mt.n[k] && !syncMeta.tomb.n[k]) syncMeta.mt.n[k] = 1;
+    bookmarks.forEach(function (b) { var key = bmKey(b); if (!syncMeta.mt.b[key] && !syncMeta.tomb.b[key]) syncMeta.mt.b[key] = 1; });
+  }
+  // Last-write-wins merge of one key->value collection using mt/tomb timestamps.
+  // localMap is mutated in place; remote carries remote.mt[col] / remote.tomb[col].
+  function mergeMap(col, localMap, remoteMap, remote) {
+    var lmt = syncMeta.mt[col] || (syncMeta.mt[col] = {});
+    var ltomb = syncMeta.tomb[col] || (syncMeta.tomb[col] = {});
+    var rmt = (remote.mt && remote.mt[col]) || {};
+    var rtomb = (remote.tomb && remote.tomb[col]) || {};
+    var keys = {}, k;
+    [localMap, remoteMap, lmt, rmt, ltomb, rtomb].forEach(function (o) { for (k in o) keys[k] = 1; });
+    var changed = false;
+    for (k in keys) {
+      var lLive = lmt[k] || 0, lDead = ltomb[k] || 0, rLive = rmt[k] || 0, rDead = rtomb[k] || 0;
+      var live = Math.max(lLive, rLive), dead = Math.max(lDead, rDead);
+      if (live) lmt[k] = live; else delete lmt[k];
+      if (dead) ltomb[k] = dead; else delete ltomb[k];
+      if (live > dead) {                         // item is alive — newest edit wins
+        var val = (rLive > lLive) ? remoteMap[k] : (k in localMap ? localMap[k] : remoteMap[k]);
+        if (val === undefined) val = remoteMap[k];
+        if (val !== undefined) {
+          if (!(k in localMap) || JSON.stringify(localMap[k]) !== JSON.stringify(val)) { localMap[k] = val; changed = true; }
+          delete ltomb[k];
+        }
+      } else if (dead > 0) {                      // item is deleted
+        if (k in localMap) { delete localMap[k]; changed = true; }
+        delete lmt[k];
+      }
+    }
+    return changed;
+  }
   function mergeSync(remote) {
     if (!remote) return false;
-    var changed = false, k;
-    if (remote.highlights) for (k in remote.highlights) if (!(k in highlights)) { highlights[k] = remote.highlights[k]; changed = true; }
-    if (remote.notes) for (k in remote.notes) if (!(k in notes)) { notes[k] = remote.notes[k]; changed = true; }
-    if (remote.bookmarks && remote.bookmarks.length) {
-      var have = {}; bookmarks.forEach(function (b) { have[b.b + ":" + b.c + ":" + b.v] = true; });
-      remote.bookmarks.forEach(function (b) { var kk = b.b + ":" + b.c + ":" + b.v; if (!have[kk]) { bookmarks.push(b); changed = true; } });
+    ensureMeta();
+    var changed = false;
+    changed = mergeMap("h", highlights, remote.highlights || {}, remote) || changed;
+    changed = mergeMap("n", notes, remote.notes || {}, remote) || changed;
+    var localBm = {}; bookmarks.forEach(function (b) { localBm[bmKey(b)] = b; });
+    var remoteBm = {}; (remote.bookmarks || []).forEach(function (b) { remoteBm[bmKey(b)] = b; });
+    if (mergeMap("b", localBm, remoteBm, remote)) {
+      bookmarks = Object.keys(localBm).map(function (k) { return localBm[k]; }).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+      changed = true;
     }
     if (changed) {
       sync.applying = true; // don't let these saves re-trigger a push mid-merge
       save(LS.highlights, highlights); save(LS.notes, notes); save(LS.bookmarks, bookmarks);
       sync.applying = false;
     }
+    saveMeta();
     return changed;
   }
   function pullSync() {
@@ -729,7 +782,8 @@
     return ensureDerived().then(function (ok) {
       if (!ok) return;
       if (!silent) setSyncStatus("syncing");
-      return encBlob(sync.key, { highlights: highlights, notes: notes, bookmarks: bookmarks, updatedAt: Date.now() }).then(function (blob) {
+      ensureMeta(); saveMeta();
+      return encBlob(sync.key, { highlights: highlights, notes: notes, bookmarks: bookmarks, mt: syncMeta.mt, tomb: syncMeta.tomb, updatedAt: Date.now() }).then(function (blob) {
         return fetch("/api/sync?doc=" + sync.docId, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ blob: blob }) });
       }).then(function () { setSyncStatus("ok"); }, function () { setSyncStatus("error"); });
     });
@@ -778,10 +832,10 @@
   }
   function toggleBookmark(s) {
     var idx = bookmarks.findIndex(function (m) { return m.b === s.b && m.c === s.c && m.v === s.v; });
-    if (idx >= 0) { bookmarks.splice(idx, 1); toast("Bookmark removed"); }
+    if (idx >= 0) { bookmarks.splice(idx, 1); tombItem("b", bmKey(s)); toast("Bookmark removed"); }
     else {
       bookmarks.unshift({ b: s.b, c: s.c, v: s.v, ref: verseRef(s), text: verseText(s), ts: Date.now() });
-      toast("Bookmarked");
+      touchItem("b", bmKey(s)); toast("Bookmarked");
     }
     save(LS.bookmarks, bookmarks);
     // update verse styling in place
@@ -814,7 +868,9 @@
     var del = e.target.closest("[data-del]");
     if (del) {
       e.stopPropagation();
+      var rm = bookmarks[+del.getAttribute("data-del")];
       bookmarks.splice(+del.getAttribute("data-del"), 1);
+      if (rm) tombItem("b", bmKey(rm));
       save(LS.bookmarks, bookmarks);
       renderBookmarkList();
       if (BIBLE) renderChapter(false);
@@ -850,7 +906,8 @@
     var del = e.target.closest("[data-delk]");
     if (del) {
       e.stopPropagation();
-      delete notes[del.getAttribute("data-delk")];
+      var dk = del.getAttribute("data-delk");
+      delete notes[dk]; tombItem("n", dk);
       save(LS.notes, notes); renderNoteList();
       if (BIBLE) renderChapter(false);
       return;
