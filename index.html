@@ -2,6 +2,17 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
+  <script>
+    // The app has moved to Vercel (which runs the ESV / API.Bible proxy
+    // functions that GitHub Pages can't). Redirect the old Pages host there,
+    // preserving the path/query/hash. No-op on Vercel or any other host.
+    (function () {
+      if (location.hostname.endsWith("github.io")) {
+        var path = location.pathname.replace(/^\/bible(\/|$)/, "/");
+        location.replace("https://bible-henna-three.vercel.app" + path + location.search + location.hash);
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
   <title>Holy Bible — Offline</title>
