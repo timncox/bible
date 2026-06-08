@@ -24,10 +24,12 @@
   }
   function save(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+    // Push synced user-content keys to the cloud (if passphrase sync is on).
+    if (typeof syncDirty === "function" && (key === LS.highlights || key === LS.notes || key === LS.bookmarks)) syncDirty();
   }
 
   var settings = Object.assign(
-    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null, funVoices: false, translation: "web", esvProxy: "", aiProvider: "claude" },
+    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null, funVoices: false, translation: "web", esvProxy: "", aiProvider: "claude", syncPhrase: "" },
     load(LS.settings, {})
   );
   var pos = load(LS.pos, { b: 0, c: 0 });
@@ -128,7 +130,8 @@
    "studyPanel","studyRef","studyContent","studyCredit",
    "vaNoteLabel","vaSwatches","notePanel","noteRef","noteText","noteSave","noteDelete",
    "noteList","noteCount","btnExport","btnImport","importFile","esvProxy","esvConfig","transList",
-   "aiPanel","aiTitle","aiContext","aiQuestion","aiProviderSeg","aiCopy","aiAsk","aiSeg","aiAskNotes"
+   "aiPanel","aiTitle","aiContext","aiQuestion","aiProviderSeg","aiCopy","aiAsk","aiSeg","aiAskNotes",
+   "syncOffBox","syncOnBox","syncPhrase","syncEnable","syncStatus","syncNow","syncOff"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -152,6 +155,7 @@
       els.loading.hidden = true;
       els.chapter.hidden = false;
       reportStorage();
+      if (syncOn()) pullSync(); // bring down notes/highlights from other devices
     })
     .catch(function (err) {
       els.loading.innerHTML =
@@ -648,6 +652,124 @@
   els.aiAskNotes.addEventListener("click", openAskNotes);
 
   // ======================================================================
+  // Passphrase sync (end-to-end encrypted, zero-knowledge server)
+  // Notes + highlights + bookmarks sync across devices via a secret phrase.
+  // The phrase derives a docId (what the server stores under) and a separate
+  // AES-GCM key (never sent). The server only sees a hash and ciphertext.
+  // ======================================================================
+  var sync = { docId: null, key: null, status: "off", timer: null, applying: false };
+  function syncOn() { return !!settings.syncPhrase && !!(window.crypto && crypto.subtle); }
+
+  function b64enc(bytes) { var s = "", i; for (i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); }
+  function b64dec(str) { var s = atob(str), a = new Uint8Array(s.length), i; for (i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+  function deriveSync(phrase) {
+    var enc = new TextEncoder();
+    return crypto.subtle.importKey("raw", enc.encode(phrase), "PBKDF2", false, ["deriveBits", "deriveKey"]).then(function (base) {
+      var dP = crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode("bible-sync-doc-v1"), iterations: 100000, hash: "SHA-256" }, base, 128);
+      var kP = crypto.subtle.deriveKey({ name: "PBKDF2", salt: enc.encode("bible-sync-key-v1"), iterations: 100000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+      return Promise.all([dP, kP]).then(function (r) {
+        var docId = Array.prototype.map.call(new Uint8Array(r[0]), function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+        return { docId: docId, key: r[1] };
+      });
+    });
+  }
+  function encBlob(key, obj) {
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var data = new TextEncoder().encode(JSON.stringify(obj));
+    return crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, data).then(function (ct) {
+      var c = new Uint8Array(ct), out = new Uint8Array(iv.length + c.length);
+      out.set(iv, 0); out.set(c, iv.length); return b64enc(out);
+    });
+  }
+  function decBlob(key, b64) {
+    var raw = b64dec(b64), iv = raw.slice(0, 12), ct = raw.slice(12);
+    return crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, ct).then(function (pt) {
+      return JSON.parse(new TextDecoder().decode(pt));
+    });
+  }
+  function ensureDerived() {
+    if (sync.docId && sync.key) return Promise.resolve(true);
+    if (!settings.syncPhrase) return Promise.resolve(false);
+    return deriveSync(settings.syncPhrase).then(function (d) { sync.docId = d.docId; sync.key = d.key; return true; }, function () { return false; });
+  }
+  function setSyncStatus(s) { sync.status = s; renderSyncUI(); }
+  // Union merge: add anything the remote has that we don't. Local wins on
+  // conflicts; deletions don't propagate (acceptable for one user's devices).
+  function mergeSync(remote) {
+    if (!remote) return false;
+    var changed = false, k;
+    if (remote.highlights) for (k in remote.highlights) if (!(k in highlights)) { highlights[k] = remote.highlights[k]; changed = true; }
+    if (remote.notes) for (k in remote.notes) if (!(k in notes)) { notes[k] = remote.notes[k]; changed = true; }
+    if (remote.bookmarks && remote.bookmarks.length) {
+      var have = {}; bookmarks.forEach(function (b) { have[b.b + ":" + b.c + ":" + b.v] = true; });
+      remote.bookmarks.forEach(function (b) { var kk = b.b + ":" + b.c + ":" + b.v; if (!have[kk]) { bookmarks.push(b); changed = true; } });
+    }
+    if (changed) {
+      sync.applying = true; // don't let these saves re-trigger a push mid-merge
+      save(LS.highlights, highlights); save(LS.notes, notes); save(LS.bookmarks, bookmarks);
+      sync.applying = false;
+    }
+    return changed;
+  }
+  function pullSync() {
+    return ensureDerived().then(function (ok) {
+      if (!ok) return;
+      setSyncStatus("syncing");
+      return fetch("/api/sync?doc=" + sync.docId).then(function (r) { return r.json(); }).then(function (data) {
+        var after = function () { setSyncStatus("ok"); pushSync(true); };
+        if (data && data.blob) return decBlob(sync.key, data.blob).then(function (remote) {
+          if (mergeSync(remote) && BIBLE) { renderChapter(false); renderBookmarkList(); renderNoteList(); }
+          after();
+        }, after);
+        after();
+      }).catch(function () { setSyncStatus("error"); });
+    });
+  }
+  function pushSync(silent) {
+    return ensureDerived().then(function (ok) {
+      if (!ok) return;
+      if (!silent) setSyncStatus("syncing");
+      return encBlob(sync.key, { highlights: highlights, notes: notes, bookmarks: bookmarks, updatedAt: Date.now() }).then(function (blob) {
+        return fetch("/api/sync?doc=" + sync.docId, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ blob: blob }) });
+      }).then(function () { setSyncStatus("ok"); }, function () { setSyncStatus("error"); });
+    });
+  }
+  function syncDirty() {
+    if (!syncOn() || sync.applying) return;
+    if (sync.timer) clearTimeout(sync.timer);
+    sync.timer = setTimeout(function () { pushSync(false); }, 1500);
+  }
+  function enableSync() {
+    var phrase = (els.syncPhrase.value || "").trim();
+    if (phrase.length < 4) { toast("Use a sync phrase of at least 4 characters."); return; }
+    settings.syncPhrase = phrase; save(LS.settings, settings);
+    sync.docId = null; sync.key = null;
+    renderSyncUI();
+    pullSync();
+  }
+  function disableSync() {
+    settings.syncPhrase = ""; save(LS.settings, settings);
+    sync.docId = null; sync.key = null; sync.status = "off";
+    if (els.syncPhrase) els.syncPhrase.value = "";
+    renderSyncUI();
+    toast("Sync turned off on this device.");
+  }
+  function renderSyncUI() {
+    if (!els.syncOnBox) return;
+    var on = syncOn();
+    els.syncOffBox.hidden = on;
+    els.syncOnBox.hidden = !on;
+    if (on) {
+      var msg = sync.status === "syncing" ? "Syncing…" : sync.status === "error" ? "Sync error — will retry on next change." : "Synced ✓ (end-to-end encrypted)";
+      els.syncStatus.textContent = msg;
+    }
+  }
+  if (els.syncEnable) els.syncEnable.addEventListener("click", enableSync);
+  if (els.syncPhrase) els.syncPhrase.addEventListener("keydown", function (e) { if (e.key === "Enter") enableSync(); });
+  if (els.syncNow) els.syncNow.addEventListener("click", function () { pullSync(); });
+  if (els.syncOff) els.syncOff.addEventListener("click", disableSync);
+
+  // ======================================================================
   // Bookmarks
   // ======================================================================
   function bmKey(s) { return s.b + ":" + s.c + ":" + s.v; }
@@ -991,6 +1113,7 @@
     if (els.esvConfig) els.esvConfig.hidden = settings.translation !== "esv";
     if (els.esvProxy && document.activeElement !== els.esvProxy) els.esvProxy.value = settings.esvProxy || "";
     reflectAiProvider();
+    renderSyncUI();
   }
 
   function reportStorage() {

@@ -222,6 +222,22 @@
       </section>
 
       <section class="setting">
+        <label>Sync notes &amp; highlights</label>
+        <div id="syncOffBox">
+          <p class="muted small" style="margin:0 0 8px">Use the same secret phrase on each device to sync your notes, highlights, and bookmarks. End-to-end encrypted — no account, no email. <strong>If you forget the phrase, the data can’t be recovered.</strong></p>
+          <input id="syncPhrase" class="dict-search" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Secret sync phrase…" style="width:100%;box-sizing:border-box;margin:0 0 8px" />
+          <button id="syncEnable" class="primarybtn" style="width:100%">Turn on sync</button>
+        </div>
+        <div id="syncOnBox" hidden>
+          <p id="syncStatus" class="muted small" style="margin:0 0 8px">Synced ✓</p>
+          <div class="size-row" style="gap:8px">
+            <button id="syncNow" class="pillbtn" style="flex:1">Sync now</button>
+            <button id="syncOff" class="pillbtn" style="flex:1">Turn off sync</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="setting">
         <label>Text size</label>
         <div class="size-row">
           <button id="fontMinus" class="pillbtn">A−</button>
