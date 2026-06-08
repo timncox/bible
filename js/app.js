@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.14.1";
+  var APP_VERSION = "1.15.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -552,6 +552,7 @@
     if (!p.hasAttribute("tabindex")) p.setAttribute("tabindex", "-1");
     // Move focus into the dialog (the container, so we don't pop the keyboard).
     try { p.focus(); } catch (e) {}
+    ovSchedule();
   }
   function closePanels() {
     openPanels.forEach(function (p) { p.hidden = true; });
@@ -559,8 +560,31 @@
     els.scrim.hidden = true;
     if (panelReturnFocus && panelReturnFocus.focus) { try { panelReturnFocus.focus(); } catch (e) {} }
     panelReturnFocus = null;
+    ovSchedule();
   }
   function anyPanelOpen() { return openPanels.length > 0; }
+
+  // ----- Back button closes overlays (history integration) -----
+  // Treat "any overlay open" as one history entry; the hardware/browser Back
+  // button then closes the open panel or speed reader instead of leaving the app.
+  var ovHasEntry = false, ovIgnorePop = false, ovSyncScheduled = false;
+  function ovShown() { return openPanels.length > 0 || (els.speedReader && !els.speedReader.hidden); }
+  function ovSync() {
+    ovSyncScheduled = false;
+    if (!window.history || !history.pushState) return;
+    var shown = ovShown();
+    if (shown && !ovHasEntry) { ovHasEntry = true; try { history.pushState({ ov: 1 }, ""); } catch (e) {} }
+    else if (!shown && ovHasEntry) { ovHasEntry = false; ovIgnorePop = true; try { history.back(); } catch (e) { ovIgnorePop = false; } }
+  }
+  function ovSchedule() { if (ovSyncScheduled) return; ovSyncScheduled = true; Promise.resolve().then(ovSync); }
+  window.addEventListener("popstate", function () {
+    if (ovIgnorePop) { ovIgnorePop = false; return; }
+    if (ovHasEntry) {
+      ovHasEntry = false;
+      if (els.speedReader && !els.speedReader.hidden) closeSpeed();
+      else closePanels();
+    }
+  });
 
   els.scrim.addEventListener("click", closePanels);
   document.querySelectorAll("[data-close]").forEach(function (btn) {
@@ -1661,12 +1685,14 @@
     els.speedHint.hidden = false;
     els.speedReader.hidden = false;
     setPlaying(false);
+    ovSchedule();
   }
   function closeSpeed() {
     pause();
     els.speedReader.hidden = true;
     // Sync the main reader to where we stopped.
     if (sr.b !== pos.b || sr.c !== pos.c) { pos = { b: sr.b, c: sr.c }; renderChapter(true); }
+    ovSchedule();
   }
 
   // Launch the speed reader over a fixed [[b,c],…] playlist (used by the plan).
