@@ -488,6 +488,7 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   background: var(--selected); color: var(--accent); white-space: nowrap;
 }
 .badge.online { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.badge.q { background: var(--bookmark); color: #1d2333; }
 
 /* ===== Speed reader (RSVP + ORP) ===== */
 .speed {

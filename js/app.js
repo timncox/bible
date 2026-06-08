@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.12.3";
+  var APP_VERSION = "1.12.4";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -1173,8 +1173,11 @@
     var vs = all.filter(function (v) { return /^en/i.test(v.lang) && (fun || isSeriousVoice(v)); });
     if (!vs.length) vs = all.filter(function (v) { return /^en/i.test(v.lang); });
     if (!vs.length) vs = all;
+    var qRank = function (v) { var q = voiceQuality(v); return q === "Premium" ? 0 : q === "Enhanced" ? 1 : q === "" ? 2 : 3; };
     vs.sort(function (a, b) {
       if (a.localService !== b.localService) return a.localService ? -1 : 1;
+      var qa = qRank(a), qb = qRank(b);
+      if (qa !== qb) return qa - qb;             // Enhanced/Premium before Standard
       return (a.name || "").localeCompare(b.name || "");
     });
     au.voices = vs;
@@ -1328,21 +1331,34 @@
     if (au.on && !au.paused) { speechSynthesis.cancel(); speakChunk(); } // apply new rate now
   }
 
+  // iOS doesn't put the quality in the voice name — it's in the voiceURI.
+  function voiceQuality(v) {
+    var u = (v.voiceURI || "").toLowerCase();
+    if (u.indexOf("premium") > -1) return "Premium";
+    if (u.indexOf("enhanced") > -1 || u.indexOf("siri") > -1) return "Enhanced";
+    if (u.indexOf("compact") > -1) return "Standard";
+    return "";
+  }
   var voiceFilter = "";
   function renderVoiceList() {
     var q = voiceFilter.toLowerCase();
-    var html = "";
+    var html = "", enhancedCount = 0;
     au.voices.forEach(function (v, i) {
-      if (q && (v.name + " " + v.lang).toLowerCase().indexOf(q) === -1) return;
+      var qual = voiceQuality(v);
+      if (qual === "Enhanced" || qual === "Premium") enhancedCount++;
+      if (q && (v.name + " " + v.lang + " " + qual).toLowerCase().indexOf(q) === -1) return;
       var cur = (au.voice && v.voiceURI === au.voice.voiceURI) ? " current" : "";
+      var qbadge = (qual === "Enhanced" || qual === "Premium") ? '<span class="badge q">' + qual + "</span>" : "";
       var badge = v.localService ? '<span class="badge">Offline</span>' : '<span class="badge online">Online</span>';
       html += '<li class="' + cur.trim() + '" data-vi="' + i + '"><span class="voice-row"><span class="voice-name">' +
-              esc(v.name) + ' <span class="voice-lang">' + esc(v.lang) + '</span></span>' + badge + '</span></li>';
+              esc(v.name) + ' <span class="voice-lang">' + esc(v.lang) + "</span></span>" + qbadge + badge + "</span></li>";
     });
-    els.voiceList.innerHTML = html || '<li class="bookmark-empty">No matching voices. Clear the filter, or download more (e.g. Enhanced) in your device settings.</li>';
+    els.voiceList.innerHTML = html || '<li class="bookmark-empty">No matching voices. Clear the filter to see all.</li>';
     if (els.voiceNote) {
-      var note = au.voices.length + " English voice" + (au.voices.length === 1 ? "" : "s") + " available to this app.";
-      if (isIOS()) note += " Note: iOS reserves its newest Premium and Siri voices (e.g. Zoe) for native apps — those don’t appear in web apps. “Enhanced” voices usually do.";
+      var note = au.voices.length + " English voice" + (au.voices.length === 1 ? "" : "s") + ".";
+      note += enhancedCount
+        ? " " + enhancedCount + " marked Enhanced — those are the high-quality ones."
+        : (isIOS() ? " Tip: download an “Enhanced” voice in Settings → Accessibility → Spoken Content → Voices, then reload this page." : "");
       els.voiceNote.textContent = note;
     }
   }
