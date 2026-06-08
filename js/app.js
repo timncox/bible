@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.14.0";
+  var APP_VERSION = "1.14.1";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -540,15 +540,25 @@
   // Panel plumbing
   // ======================================================================
   var openPanels = [];
+  var panelReturnFocus = null;
+  var REDUCE_MOTION = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function openPanel(p) {
+    if (!openPanels.length) panelReturnFocus = document.activeElement;
     p.hidden = false;
     els.scrim.hidden = false;
     openPanels.push(p);
+    p.setAttribute("role", "dialog");
+    p.setAttribute("aria-modal", "true");
+    if (!p.hasAttribute("tabindex")) p.setAttribute("tabindex", "-1");
+    // Move focus into the dialog (the container, so we don't pop the keyboard).
+    try { p.focus(); } catch (e) {}
   }
   function closePanels() {
     openPanels.forEach(function (p) { p.hidden = true; });
     openPanels = [];
     els.scrim.hidden = true;
+    if (panelReturnFocus && panelReturnFocus.focus) { try { panelReturnFocus.focus(); } catch (e) {} }
+    panelReturnFocus = null;
   }
   function anyPanelOpen() { return openPanels.length > 0; }
 
@@ -1342,7 +1352,7 @@
     var prev = els.chapter.querySelector(".v.speaking");
     if (prev) prev.classList.remove("speaking");
     var node = els.chapter.querySelector('.v[data-v="' + (vIdx + 1) + '"]');
-    if (node) { node.classList.add("speaking"); node.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    if (node) { node.classList.add("speaking"); node.scrollIntoView({ block: "center", behavior: REDUCE_MOTION ? "auto" : "smooth" }); }
   }
 
   function setAudioPlayIcon(playing) {
