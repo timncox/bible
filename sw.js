@@ -1,5 +1,5 @@
 /* Service worker — precaches the app shell + full Bible text for offline use. */
-var CACHE = "bible-offline-v1.17.0";
+var CACHE = "bible-offline-v1.18.0";
 
 var PRECACHE = [
   "./",
@@ -44,6 +44,10 @@ self.addEventListener("fetch", function (event) {
 
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+
+  // API calls (e.g. the ESV proxy /api/esv) go straight to network — never
+  // served from the offline app-shell cache.
+  if (url.pathname.indexOf("/api/") === 0) return;
 
   // Navigation requests -> serve cached app shell (offline-first SPA).
   if (req.mode === "navigate") {
