@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.19.0";
+  var APP_VERSION = "1.19.1";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -46,16 +46,12 @@
     { id: "web", name: "WEB", sub: "World English Bible", online: false },
     { id: "esv", name: "ESV", sub: "English Standard Version", online: true, kind: "esv",
       credit: "Scripture quotations are from the ESV® Bible, © 2001 Crossway. Used by permission." },
-    { id: "kjv", name: "KJV", sub: "King James Version", online: true, kind: "apibible",
-      bibleId: "de4e12af7f28f599-02", credit: "King James Version (public domain)." },
     { id: "niv", name: "NIV", sub: "New International Version", online: true, kind: "apibible",
       bibleId: "78a9f6124f344018-01",
       credit: "Scripture taken from THE HOLY BIBLE, NEW INTERNATIONAL VERSION®, NIV®. Copyright © 1973, 1978, 1984, 2011 by Biblica, Inc.® Used by permission. All rights reserved worldwide." },
     { id: "csb", name: "CSB", sub: "Christian Standard Bible", online: true, kind: "apibible",
       bibleId: "a556c5305ee15c3f-01",
       credit: "Christian Standard Bible®, Copyright © 2017 by Holman Bible Publishers. Used by permission." },
-    { id: "asv", name: "ASV", sub: "American Standard Version", online: true, kind: "apibible",
-      bibleId: "06125adad2d5898a-01", credit: "American Standard Version (public domain)." },
     { id: "msg", name: "MSG", sub: "The Message", online: true, kind: "apibible",
       bibleId: "6f11a7de016f942e-01",
       credit: "Scripture taken from THE MESSAGE. Copyright © 1993, 2002, 2018 by Eugene H. Peterson. Used by permission of NavPress. All rights reserved." }
