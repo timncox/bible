@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.12.2";
+  var APP_VERSION = "1.12.3";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -25,7 +25,7 @@
   }
 
   var settings = Object.assign(
-    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null },
+    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null, funVoices: false },
     load(LS.settings, {})
   );
   var pos = load(LS.pos, { b: 0, c: 0 });
@@ -1155,10 +1155,23 @@
   // Pull the current voice list (sorted: English + on-device first), resolve the
   // saved voice, and refresh the picker if it's open. Voices on iOS/Android can
   // arrive late and change, so this is called on boot AND on every voiceschanged.
+  // Apple's gimmick/character voices — filtered out of the picker.
+  var NOVELTY_VOICES = {};
+  ("albert,bad news,bahh,bells,boing,bubbles,cellos,good news,jester,organ,pipe organ," +
+   "superstar,trinoids,whisper,wobble,zarvox,deranged,hysterical,zuzu,grandma,grandpa," +
+   "eddy,flo,reed,rocko,sandy,shelley,wobble,junior,ralph,fred,kathy"
+  ).split(",").forEach(function (n) { NOVELTY_VOICES[n] = 1; });
+  function isSeriousVoice(v) {
+    var base = (v.name || "").toLowerCase().split("(")[0].trim();
+    return !NOVELTY_VOICES[base];
+  }
+
   function refreshVoices() {
     var all = (speechSynthesis.getVoices() || []).slice();
-    // English voices only (fall back to everything if the device has none).
-    var vs = all.filter(function (v) { return /^en/i.test(v.lang); });
+    // English voices; novelty voices hidden unless the Easter egg unlocked them.
+    var fun = settings.funVoices;
+    var vs = all.filter(function (v) { return /^en/i.test(v.lang) && (fun || isSeriousVoice(v)); });
+    if (!vs.length) vs = all.filter(function (v) { return /^en/i.test(v.lang); });
     if (!vs.length) vs = all;
     vs.sort(function (a, b) {
       if (a.localService !== b.localService) return a.localService ? -1 : 1;
@@ -1352,7 +1365,19 @@
     if (au.on && !au.paused) { speechSynthesis.cancel(); speakChunk(); }
   });
   if (els.voiceFilter) {
-    els.voiceFilter.addEventListener("input", function () { voiceFilter = els.voiceFilter.value; renderVoiceList(); });
+    els.voiceFilter.addEventListener("input", function () {
+      voiceFilter = els.voiceFilter.value;
+      var magic = voiceFilter.toLowerCase().trim();
+      // Easter egg: type "bubbles" to unlock the novelty voices; "serious" to hide.
+      if (magic === "bubbles" && !settings.funVoices) {
+        settings.funVoices = true; save(LS.settings, settings); refreshVoices();
+        toast("🫧 Novelty voices unlocked!");
+      } else if (magic === "serious" && settings.funVoices) {
+        settings.funVoices = false; save(LS.settings, settings); refreshVoices();
+        toast("Novelty voices hidden.");
+      }
+      renderVoiceList();
+    });
   }
 
   if (TTS) {
