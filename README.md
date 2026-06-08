@@ -21,7 +21,9 @@ network required after the first visit.
   aloud using your **device's built‑in text‑to‑speech voices**, highlighting the
   current verse and auto‑advancing across chapters. No audio files, no network:
   it works offline whenever an on‑device voice is selected. The voice picker
-  flags which voices are **Offline** vs **Online**, with adjustable speed.
+  flags which voices are **Offline** vs **Online**, with adjustable speed, a
+  **sleep timer**, and **lock‑screen / headphone controls** (where the platform
+  supports it).
 - **Read** in a clean, distraction‑free view with paragraph or verse‑by‑verse layout.
 - **Navigate** by book → chapter, with prev/next buttons, swipe gestures, and arrow keys.
 - **Search** the entire Bible instantly, with highlighted matches. Filter by
