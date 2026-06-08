@@ -339,6 +339,13 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .lex-pron { color: var(--muted); font-size: 0.85rem; }
 .lex-def { color: var(--text-dim); line-height: 1.55; font-size: 0.95rem; }
 .lex-kjv { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+.lex-conc, .lex-back {
+  display: inline-block; margin-top: 8px; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+  background: var(--bg-elev2); color: var(--accent); font-weight: 600; font-size: 0.85rem;
+}
+.lex-conc:active, .lex-back:active { background: var(--bg); }
+.lex-back { margin: 0 0 10px; }
 
 /* interlinear tab — English with original Greek/Hebrew beneath each tagged word */
 .intr { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-start; padding: 6px 0 10px; }

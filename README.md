@@ -42,7 +42,8 @@ network required after the first visit.
   Scripture references inside the commentary and dictionary are **tappable** to
   jump straight to the cited verse. A fifth **Interlinear** tab shows the KJV verse
   with **Strong's numbers** and the original **Greek/Hebrew** beneath each word —
-  tap any word to open its Hebrew/Greek lexicon entry.
+  tap any word to open its Hebrew/Greek lexicon entry, then **"find every verse
+  that uses it"** for a full Strong's concordance.
   All bundled for offline use (the interlinear data downloads on first use).
 - **Bookmarks** — tap any verse to bookmark, copy, or share it. Saved on‑device.
 - **Themes** — light, sepia, and dark, plus adjustable text size.
