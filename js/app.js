@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.19.1";
+  var APP_VERSION = "1.22.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -27,7 +27,7 @@
   }
 
   var settings = Object.assign(
-    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null, funVoices: false, translation: "web", esvProxy: "" },
+    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null, funVoices: false, translation: "web", esvProxy: "", aiProvider: "claude" },
     load(LS.settings, {})
   );
   var pos = load(LS.pos, { b: 0, c: 0 });
@@ -70,6 +70,14 @@
     "MAT","MRK","LUK","JHN","ACT","ROM","1CO","2CO","GAL","EPH","PHP","COL","1TH","2TH",
     "1TI","2TI","TIT","PHM","HEB","JAS","1PE","2PE","1JN","2JN","3JN","JUD","REV"
   ];
+
+  // AI assistants for "Ask AI". prefill = can we pass the prompt in the URL and
+  // have it auto-fill/send? (Claude's URL prefill is unreliable -> clipboard.)
+  var AI_PROVIDERS = {
+    claude:  { name: "Claude",  url: "https://claude.ai/new",         prefill: false },
+    chatgpt: { name: "ChatGPT", url: "https://chatgpt.com/",          prefill: true },
+    gemini:  { name: "Gemini",  url: "https://gemini.google.com/app", prefill: true }
+  };
 
   // Online verse cache: key = "<translationId>|<b>|<c>" -> [verse, ...]
   var onlineCache = {};
@@ -119,7 +127,8 @@
    "planReadings","planBar","planProgressLabel","planSpeedDay","planListenDay","fabPlan","fabDot",
    "studyPanel","studyRef","studyContent","studyCredit",
    "vaNoteLabel","vaSwatches","notePanel","noteRef","noteText","noteSave","noteDelete",
-   "noteList","noteCount","btnExport","btnImport","importFile","esvProxy","esvConfig","transList"
+   "noteList","noteCount","btnExport","btnImport","importFile","esvProxy","esvConfig","transList",
+   "aiPanel","aiTitle","aiContext","aiQuestion","aiProviderSeg","aiCopy","aiAsk","aiSeg","aiAskNotes"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -429,6 +438,7 @@
     var act = btn.getAttribute("data-act");
     var s = selectedVerse;
     if (act === "study") { openStudy(s); }
+    else if (act === "askai") { openAskAI(s); }
     else if (act === "highlight") { els.vaSwatches.hidden = !els.vaSwatches.hidden; }
     else if (act === "note") { openNoteEditor(s); }
     else if (act === "bookmark") { toggleBookmark(s); showVerseActions(); }
@@ -518,6 +528,124 @@
     if (els.searchPanel && !els.searchPanel.hidden) runSearch(); // re-run search in new translation
     if (BIBLE) renderChapter(true);
   }
+
+  // ======================================================================
+  // Ask AI — open the user's chosen assistant with the passage pre-loaded.
+  // No backend: build a prompt, copy it to the clipboard, and open the AI
+  // (prefilling the URL where that works; clipboard is the universal fallback).
+  // AI_PROVIDERS is defined near the top (needed before boot's applySettings).
+  // ======================================================================
+  function aiProvider() { return AI_PROVIDERS[settings.aiProvider] || AI_PROVIDERS.claude; }
+  function clip(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).catch(function () {});
+    try { var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); } catch (e) {}
+    return Promise.resolve();
+  }
+  // Launch the chosen AI with `prompt`. Always copies to clipboard first so it
+  // works even where URL prefill isn't supported (Claude) or the prompt is long.
+  function launchAI(prompt) {
+    var p = aiProvider();
+    var canPrefill = p.prefill && prompt.length < 1800;     // keep URLs well under browser limits
+    clip(prompt);
+    var url = canPrefill ? (p.url + (p.url.indexOf("?") > -1 ? "&" : "?") + "q=" + encodeURIComponent(prompt)) : p.url;
+    window.open(url, "_blank", "noopener");
+    toast(canPrefill ? ("Opening " + p.name + "…") : ("Prompt copied — paste into " + p.name + " (Cmd/Ctrl+V)"));
+  }
+  function versePromptContext(s) {
+    var lines = ["From my Bible app — " + verseRef(s) + " (" + translationTag() + "):", "", "“" + displayVerseText(s) + "”"];
+    var note = notes[vKey(s)];
+    if (note) lines.push("", "My note on it: " + note);
+    return lines.join("\n");
+  }
+  function buildPrompt(context, question) {
+    return context + "\n\n" + (question ? question : "Please help me understand this passage — its meaning and context.");
+  }
+  // Bundle the user's notes + highlighted verses (offline WEB text) into one prompt.
+  function notesPrompt(question) {
+    var items = [], k, s;
+    for (k in notes) { s = keyToVerse(k); if (s) items.push({ s: s, note: notes[k] }); }
+    var noted = {};
+    items.forEach(function (it) { noted[vKey(it.s)] = true; });
+    var hls = [];
+    for (k in highlights) { if (!noted[k]) { s = keyToVerse(k); if (s) hls.push(s); } }
+    items.sort(cmpVerse); hls.sort(cmpVerse);
+    var lines = ["Here are my Bible notes and highlights. Please help me reflect on them and answer my question."];
+    if (items.length) {
+      lines.push("", "Notes:");
+      items.forEach(function (it) { lines.push("- " + verseRef(it.s) + ": “" + verseText(it.s) + "” — Note: " + it.note); });
+    }
+    if (hls.length) {
+      lines.push("", "Highlighted:");
+      hls.forEach(function (s) { lines.push("- " + verseRef(s) + ": “" + verseText(s) + "”"); });
+    }
+    if (!items.length && !hls.length) return null;
+    return lines.join("\n") + "\n\n" + (question ? question : "What themes connect these, and what should I reflect on?");
+  }
+  function keyToVerse(k) { var p = k.split("."); return p.length === 3 ? { b: +p[0], c: +p[1], v: +p[2] } : null; }
+  function cmpVerse(a, b) { var x = a.s || a, y = b.s || b; return (x.b - y.b) || (x.c - y.c) || (x.v - y.v); }
+
+  // ---- Ask-AI panel ----
+  var aiMode = null; // {kind:"verse", s} or {kind:"notes"}
+  function openAskAI(s) {
+    aiMode = { kind: "verse", s: { b: s.b, c: s.c, v: s.v } };
+    els.aiTitle.textContent = "Ask AI — " + verseRef(s);
+    els.aiContext.textContent = versePromptContext(s);
+    els.aiQuestion.value = "";
+    clearVerseSelection();
+    reflectAiProvider();
+    openPanel(els.aiPanel);
+    setTimeout(function () { els.aiQuestion.focus(); }, 80);
+  }
+  function openAskNotes() {
+    if (notesPrompt("") == null) { toast("Add some notes or highlights first."); return; }
+    aiMode = { kind: "notes" };
+    els.aiTitle.textContent = "Ask AI about my notes";
+    var n = Object.keys(notes).length, h = Object.keys(highlights).length;
+    els.aiContext.textContent = n + " note" + (n === 1 ? "" : "s") + " and " + h + " highlight" + (h === 1 ? "" : "s") + " will be included.";
+    els.aiQuestion.value = "";
+    reflectAiProvider();
+    closePanels();
+    openPanel(els.aiPanel);
+    setTimeout(function () { els.aiQuestion.focus(); }, 80);
+  }
+  function currentAiPrompt() {
+    var q = els.aiQuestion.value.trim();
+    if (aiMode && aiMode.kind === "notes") return notesPrompt(q);
+    if (aiMode && aiMode.kind === "verse") return buildPrompt(versePromptContext(aiMode.s), q);
+    return null;
+  }
+  function reflectAiProvider() {
+    els.aiAsk.textContent = "Ask " + aiProvider().name;
+    [els.aiProviderSeg, els.aiSeg].forEach(function (seg) {
+      if (!seg) return;
+      seg.querySelectorAll("[data-ai]").forEach(function (b) {
+        b.classList.toggle("active", b.getAttribute("data-ai") === settings.aiProvider);
+      });
+    });
+  }
+  function setAiProvider(id) {
+    if (!AI_PROVIDERS[id]) return;
+    settings.aiProvider = id; save(LS.settings, settings);
+    reflectAiProvider();
+  }
+  els.aiProviderSeg.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-ai]"); if (b) setAiProvider(b.getAttribute("data-ai"));
+  });
+  els.aiSeg.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-ai]"); if (b) setAiProvider(b.getAttribute("data-ai"));
+  });
+  els.aiAsk.addEventListener("click", function () {
+    var prompt = currentAiPrompt();
+    if (!prompt) { toast("Nothing to ask about."); return; }
+    launchAI(prompt);
+    closePanels();
+  });
+  els.aiCopy.addEventListener("click", function () {
+    var prompt = currentAiPrompt();
+    if (!prompt) { toast("Nothing to copy."); return; }
+    clip(prompt).then(function () { toast("Prompt copied"); });
+  });
+  els.aiAskNotes.addEventListener("click", openAskNotes);
 
   // ======================================================================
   // Bookmarks
@@ -862,6 +990,7 @@
     });
     if (els.esvConfig) els.esvConfig.hidden = settings.translation !== "esv";
     if (els.esvProxy && document.activeElement !== els.esvProxy) els.esvProxy.value = settings.esvProxy || "";
+    reflectAiProvider();
   }
 
   function reportStorage() {
