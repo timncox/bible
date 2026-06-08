@@ -113,6 +113,12 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   margin: 4px 0 2px;
 }
 .chapter .ch-sub { color: var(--text-dim); margin: 0 0 22px; font-size: 0.95rem; }
+.esv-credit { margin: 22px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.esv-tofweb {
+  display: inline-block; margin-top: 10px; padding: 8px 14px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--bg-elev);
+  color: var(--accent); font-weight: 600; font-size: 0.85rem; cursor: pointer;
+}
 
 /* paragraph layout (default) */
 .chapter p.verses { margin: 0; text-align: left; }

@@ -189,6 +189,18 @@
       </section>
 
       <section class="setting">
+        <label>Translation</label>
+        <div class="seg">
+          <button class="seg-btn" data-translation="web">WEB (offline)</button>
+          <button class="seg-btn" data-translation="esv">ESV (online)</button>
+        </div>
+        <div id="esvConfig" hidden>
+          <input id="esvProxy" class="dict-search" type="url" inputmode="url" autocomplete="off" placeholder="ESV proxy URL (Cloudflare Worker)…" style="width:100%;box-sizing:border-box;margin:10px 0 4px" />
+          <p class="muted small">ESV requires a proxy (see <strong>proxy/</strong> in the repo). It reads online only; audio, search, and study tools use the offline WEB text. ESV® © Crossway.</p>
+        </div>
+      </section>
+
+      <section class="setting">
         <label>Text size</label>
         <div class="size-row">
           <button id="fontMinus" class="pillbtn">A−</button>
