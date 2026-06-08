@@ -48,7 +48,9 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html { height: 100%; }
+/* Disable double-tap-to-zoom (keeps scroll + pinch-zoom); also removes the
+   legacy 300ms tap delay on iOS. */
+html { height: 100%; touch-action: manipulation; }
 body {
   margin: 0;
   height: 100vh;        /* fallback */
