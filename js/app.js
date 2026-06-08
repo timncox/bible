@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.16.0";
+  var APP_VERSION = "1.17.0";
   var DATA_URL = "data/web.json";
 
   // ----- Book metadata (Old Testament = first 39) -----
@@ -27,7 +27,7 @@
   }
 
   var settings = Object.assign(
-    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null, funVoices: false },
+    { theme: prefersDark() ? "dark" : "light", fontScale: 1, layout: "paragraph", wpm: 400, chunk: 1, rate: 1, voiceName: null, voiceURI: null, funVoices: false, translation: "web", esvProxy: "" },
     load(LS.settings, {})
   );
   var pos = load(LS.pos, { b: 0, c: 0 });
@@ -56,7 +56,7 @@
    "planReadings","planBar","planProgressLabel","planSpeedDay","planListenDay","fabPlan","fabDot",
    "studyPanel","studyRef","studyContent","studyCredit",
    "vaNoteLabel","vaSwatches","notePanel","noteRef","noteText","noteSave","noteDelete",
-   "noteList","noteCount","btnExport","btnImport","importFile"
+   "noteList","noteCount","btnExport","btnImport","importFile","esvProxy","esvConfig"
   ].forEach(function (id) { els[id] = $(id); });
 
   function prefersDark() {
@@ -96,23 +96,37 @@
   // ======================================================================
   function renderChapter(scrollTop) {
     var book = BIBLE[pos.b];
-    var verses = book.chapters[pos.c];
     var ref = book.name + " " + (pos.c + 1);
     els.refText.textContent = ref;
     els.navRef.textContent = ref;
     document.title = ref + " — Holy Bible";
+    els.btnPrev.disabled = (pos.b === 0 && pos.c === 0);
+    els.btnNext.disabled = (pos.b === BIBLE.length - 1 && pos.c === book.chapters.length - 1);
+    if (scrollTop) els.reader.scrollTop = 0;
+
+    var esv = settings.translation === "esv";
+    var verses = esv ? esvCache[pos.b + "." + pos.c] : book.chapters[pos.c];
+
+    if (esv && !verses) {                      // need to fetch ESV for this chapter
+      els.chapter.className = "chapter layout-" + settings.layout;
+      els.chapter.innerHTML = '<h1>' + esc(book.name) + '</h1>' + esvStatusHtml(pos.b, pos.c);
+      save(LS.pos, pos);
+      if (settings.esvProxy) fetchESV(pos.b, pos.c);
+      return;
+    }
 
     var bmSet = bookmarkSetForChapter(pos.b, pos.c);
     var pre = pos.b + "." + pos.c + ".";
 
     var html = '<h1>' + esc(book.name) + '</h1>' +
-               '<p class="ch-sub">Chapter ' + (pos.c + 1) + ' · ' + verses.length + ' verses</p>' +
+               '<p class="ch-sub">Chapter ' + (pos.c + 1) + ' · ' + verses.length + ' verses' + (esv ? ' · ESV' : '') + '</p>' +
                '<button class="ch-commentary" type="button">' +
                '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 0 1 2-2h7v16H6a2 2 0 0 0-2 2zM20 3v16a2 2 0 0 0-2 2h-5V3z"/></svg>' +
                'Commentary &amp; study</button>' +
                '<p class="verses">';
     for (var i = 0; i < verses.length; i++) {
       var vn = i + 1, vkey = pre + vn;
+      if (!verses[i]) continue;
       var cls = "v" + (bmSet[vn] ? " bookmarked" : "");
       if (highlights[vkey] != null) cls += " hl" + highlights[vkey];
       var mark = notes[vkey] != null ? '<span class="note-mark" aria-label="Has a note">●</span>' : "";
@@ -120,15 +134,50 @@
               '<span class="vn">' + vn + '</span>' + esc(verses[i]) + mark + ' </span>';
     }
     html += '</p>';
+    if (esv) html += '<p class="esv-credit muted small">Scripture quotations are from the ESV® Bible, © 2001 Crossway. Used by permission.</p>';
     els.chapter.innerHTML = html;
     els.chapter.className = "chapter layout-" + settings.layout;
 
-    els.btnPrev.disabled = (pos.b === 0 && pos.c === 0);
-    els.btnNext.disabled = (pos.b === BIBLE.length - 1 && pos.c === book.chapters.length - 1);
-
-    if (scrollTop) els.reader.scrollTop = 0;
     clearVerseSelection();
     save(LS.pos, pos);
+  }
+
+  // ----- ESV (online, via proxy) -----
+  var esvCache = {};
+  function esvStatusHtml(b, c) {
+    if (!settings.esvProxy) {
+      return '<p class="study-empty">Add your ESV proxy URL in <strong>Settings → Translation</strong> to read the ESV. ' +
+        '<br><button class="esv-tofweb" type="button">Use offline WEB instead</button></p>';
+    }
+    return '<p class="study-loading">Loading ' + esc(BIBLE[b].name + " " + (c + 1)) + ' (ESV)…</p>';
+  }
+  function fetchESV(b, c) {
+    var key = b + "." + c;
+    var q = BIBLE[b].name + " " + (c + 1);
+    fetch(settings.esvProxy + (settings.esvProxy.indexOf("?") > -1 ? "&" : "?") + "q=" + encodeURIComponent(q))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.passages || !data.passages.length) throw new Error(data && data.error ? data.error : "no passage");
+        esvCache[key] = parseEsvPassage(data.passages[0]);
+        if (settings.translation === "esv" && pos.b === b && pos.c === c) renderChapter(false);
+      })
+      .catch(function (err) {
+        if (settings.translation === "esv" && pos.b === b && pos.c === c) {
+          els.chapter.innerHTML = '<h1>' + esc(BIBLE[b].name) + '</h1>' +
+            '<p class="study-empty">Couldn’t load the ESV (' + esc(String(err.message || err)) + ').<br>' +
+            'Check your proxy URL and connection. <button class="esv-tofweb" type="button">Use offline WEB instead</button></p>';
+        }
+      });
+  }
+  // Turn "[1] In the beginning... [2] ..." into a verse-indexed array.
+  function parseEsvPassage(text) {
+    var out = [], re = /\[(\d+)\]\s*/g, m, last = null, lastIdx = 0;
+    while ((m = re.exec(text))) {
+      if (last !== null) out[last - 1] = text.slice(lastIdx, m.index).replace(/\s+/g, " ").trim();
+      last = +m[1]; lastIdx = re.lastIndex;
+    }
+    if (last !== null) out[last - 1] = text.slice(lastIdx).replace(/\s+/g, " ").trim();
+    return out;
   }
 
   function esc(s) {
@@ -262,6 +311,7 @@
   // ======================================================================
   els.chapter.addEventListener("click", function (e) {
     if (e.target.closest(".ch-commentary")) { openStudyChapter(pos.b, pos.c); return; }
+    if (e.target.closest(".esv-tofweb")) { setTranslation("web"); return; }
     var v = e.target.closest(".v");
     if (!v) return;
     var vn = +v.getAttribute("data-v");
@@ -303,7 +353,7 @@
     else if (act === "highlight") { els.vaSwatches.hidden = !els.vaSwatches.hidden; }
     else if (act === "note") { openNoteEditor(s); }
     else if (act === "bookmark") { toggleBookmark(s); showVerseActions(); }
-    else if (act === "copy") { copyText(verseRef(s) + " — " + verseText(s) + " (WEB)"); }
+    else if (act === "copy") { copyText(verseRef(s) + " — " + displayVerseText(s) + " (" + translationTag() + ")"); }
     else if (act === "share") { shareVerse(s); }
     else if (act === "close") { clearVerseSelection(); }
   });
@@ -366,12 +416,26 @@
     }
   }
   function shareVerse(s) {
-    var text = verseRef(s) + " — " + verseText(s) + " (WEB)";
+    var text = verseRef(s) + " — " + displayVerseText(s) + " (" + translationTag() + ")";
     if (navigator.share) {
       navigator.share({ title: verseRef(s), text: text }).catch(function () {});
     } else {
       copyText(text);
     }
+  }
+  function translationTag() { return settings.translation === "esv" ? "ESV" : "WEB"; }
+  function displayVerseText(s) {
+    if (settings.translation === "esv") {
+      var v = esvCache[s.b + "." + s.c];
+      if (v && v[s.v - 1]) return v[s.v - 1];
+    }
+    return verseText(s);
+  }
+  function setTranslation(t) {
+    settings.translation = t;
+    save(LS.settings, settings);
+    applySettings();
+    if (BIBLE) renderChapter(true);
   }
 
   // ======================================================================
@@ -631,6 +695,15 @@
       if (BIBLE) renderChapter(false);
     });
   });
+  // translation
+  els.settingsPanel.querySelectorAll("[data-translation]").forEach(function (btn) {
+    btn.addEventListener("click", function () { setTranslation(btn.getAttribute("data-translation")); });
+  });
+  els.esvProxy.addEventListener("change", function () {
+    settings.esvProxy = els.esvProxy.value.trim().replace(/\/+$/, "");
+    save(LS.settings, settings);
+    if (settings.translation === "esv" && BIBLE) renderChapter(true);
+  });
   // font
   els.fontMinus.addEventListener("click", function () { changeFont(-0.1); });
   els.fontPlus.addEventListener("click", function () { changeFont(0.1); });
@@ -653,6 +726,11 @@
     els.settingsPanel.querySelectorAll("[data-layout]").forEach(function (b) {
       b.classList.toggle("active", b.getAttribute("data-layout") === settings.layout);
     });
+    els.settingsPanel.querySelectorAll("[data-translation]").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-translation") === settings.translation);
+    });
+    if (els.esvConfig) els.esvConfig.hidden = settings.translation !== "esv";
+    if (els.esvProxy && document.activeElement !== els.esvProxy) els.esvProxy.value = settings.esvProxy || "";
   }
 
   function reportStorage() {
