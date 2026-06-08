@@ -1,0 +1,12 @@
+# Cloudflare Worker config for the ESV API proxy (see proxy/).
+# This lets the "Deploy to Cloudflare" button find and deploy the Worker.
+# The ESV token is NOT here — set it as a secret named ESV_TOKEN in the
+# Cloudflare dashboard (Worker → Settings → Variables and Secrets) after deploy.
+name = "esv-proxy"
+main = "proxy/esv-worker.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# Optional: lock the proxy to your app's origin (recommended).
+# [vars]
+# ALLOWED_ORIGINS = "https://timncox.github.io"
